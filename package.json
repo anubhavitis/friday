@@ -1,0 +1,17 @@
+{
+    "name": "friday",
+    "version": "1.0.0",
+    "description": "ai-assistant",
+    "main": "app.ts",
+    "scripts": {
+        "start": "bun run app.ts",
+        "dev": "bun --watch app.ts",
+        "typecheck": "tsc --noEmit"
+    },
+    "dependencies": {
+        "bun-types": "latest"
+    },
+    "devDependencies": {
+        "typescript": "^5.0.0"
+    }
+}
