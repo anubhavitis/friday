@@ -169,9 +169,7 @@ const server: Serve = {
 
       openAiWs.onmessage = (data: MessageEvent) => {
         try {
-          console.log("Received message");
           const response = JSON.parse(data.data);
-          console.log("Response:", response.type);
           if (LOG_EVENT_TYPES.includes(response.type)) {
             console.log(`Received event: ${response.type}`, response);
           }
