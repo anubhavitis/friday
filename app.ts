@@ -1,6 +1,7 @@
 import { Serve, ServerWebSocket } from "bun";
 import { HealthHandler } from "./src/api/healths";
 import twilio from "twilio";
+import VoiceResponse from "twilio/lib/twiml/VoiceResponse";
 
 const {
   TWILIO_ACCOUNT_SID,
@@ -24,8 +25,24 @@ const SYSTEM_MESSAGE =
   "You are a helpful and bubbly AI assistant who loves to chat about anything the user is interested in and is prepared to offer them facts. You have a penchant for dad jokes, owl jokes, and rickrolling – subtly. Always stay positive, but work in a joke when appropriate.";
 const VOICE = "alloy"; // 'alloy', 'nova', 'shimmer', 'echo'
 const PORT = process.env.PORT || 3000;
-const outboundTwiML = `<?xml version="1.0" encoding="UTF-8"?><Response><Connect><Stream url="wss://${SERVER}/media-stream" /></Connect></Response>`;
-
+const outboundTwiML = `
+<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+  <Connect>
+    <Stream url="wss://${SERVER}/media-stream" />
+  </Connect>
+</Response>`;
+const inboundTwiML = `
+    <?xml version="1.0" encoding="UTF-8"?>
+    <Response>
+      <Say>Please wait while we connect your call to the AI voice assistant, powered by Twilio and the OpenAI Realtime API</Say>
+      <Pause length="1"/>
+      <Say>OK, you can start talking!</Say>
+      <Connect>
+        <Stream url="wss://${SERVER}/media-stream" />
+      </Connect>
+    </Response>
+  `;
 // Function to check if a number is allowed to be called. With your own function, be sure 
 // to do your own diligence to be compliant.
 const client = twilio(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN);
@@ -63,23 +80,14 @@ const LOG_EVENT_TYPES = [
   "session.created",
 ];
 
-const model = "gpt-4o";
+const model = "gpt-4o-realtime-preview-2024-12-17";
 
 const incomingHandler = (request: Request) => {
-  console.log("Incoming call received, host:", request.headers.get("host"));
-  const twimlResponse = `
-    <?xml version="1.0" encoding="UTF-8"?>
-    <Response>
-      <Say>Please wait while we connect your call to the AI voice assistant, powered by Twilio and the OpenAI Realtime API</Say>
-      <Pause length="1"/>
-      <Say>OK, you can start talking!</Say>
-      <Connect>
-        <Stream url="wss://${request.headers.get("host")}/media-stream"/>
-      </Connect>
-    </Response>
-  `;
+  const response = new VoiceResponse();
+  const connect = response.connect();
+  connect.stream({ url: `wss://${SERVER}/media-stream` });
 
-  return new Response(twimlResponse, {
+  return new Response(response.toString(), {
     headers: {
       "Content-Type": "text/xml",
     },
@@ -155,11 +163,15 @@ const server: Serve = {
 
         openAiWs.send(JSON.stringify(initialConversationItem));
         openAiWs.send(JSON.stringify({ type: "response.create" }));
+
+        console.log("Sent initial conversation item and response.create");
       };
 
-      openAiWs.onmessage = (data: any) => {
+      openAiWs.onmessage = (data: MessageEvent) => {
         try {
-          const response = JSON.parse(data);
+          console.log("Received message");
+          const response = JSON.parse(data.data);
+          console.log("Response:", response.type);
           if (LOG_EVENT_TYPES.includes(response.type)) {
             console.log(`Received event: ${response.type}`, response);
           }
@@ -194,7 +206,6 @@ const server: Serve = {
     },
 
     message: (ws: ServerWebSocket<undefined>, message: string) => {
-      console.log("WebSocket message:", message);
       try {
         const data = JSON.parse(message);
 
