@@ -1,5 +1,3 @@
-import { Serve } from "bun";
-
 export const HealthHandler = {
   GET: (req: Request) => {
     return new Response(
