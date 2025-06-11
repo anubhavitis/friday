@@ -9,7 +9,6 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@openai/agents": "^0.0.5",
     "bun-types": "latest",
     "dotenv": "^16.5.0",
     "twilio": "^5.7.0"
