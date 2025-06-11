@@ -1,7 +1,13 @@
 import { WebSocket, MessageEvent } from "ws";
 import { ServerWebSocket } from "bun";
 
+interface SessionUpdate {
+  type: string;
+  session: any;
+};
+
 export class OpenAIService {
+  
   private ws: WebSocket | null = null;
   private streamSid: string | null = null;
   private clientWs: ServerWebSocket<undefined> | null = null;
@@ -20,9 +26,11 @@ export class OpenAIService {
     "session.created",
   ];
 
+  private textOnly: boolean = false;
+
   constructor(private apiKey: string) {}
 
-  public connect(clientWs: ServerWebSocket<undefined>) {
+  public connect(clientWs: ServerWebSocket<undefined>, textOnly: boolean = false) {
     this.clientWs = clientWs;
     this.ws = new WebSocket(`wss://api.openai.com/v1/realtime?model=${this.MODEL}`, {
       headers: {
@@ -30,7 +38,7 @@ export class OpenAIService {
         "OpenAI-Beta": "realtime=v1",
       },
     });
-
+    this.textOnly = textOnly;
     this.setupWebSocketHandlers();
   }
 
@@ -73,10 +81,18 @@ export class OpenAIService {
     };
   }
 
-  private sendSessionUpdate() {
-    if (!this.ws) return;
-
-    const sessionUpdate = {
+  private getSessionUpdate(): SessionUpdate {
+    if (this.textOnly) {
+      return {
+        type: "session.update",
+        session: {
+          modalities: ["text"],
+          instructions: this.SYSTEM_MESSAGE,   // system prompt guiding the model
+          temperature: 0.8,
+        },
+      };
+    }
+    return {
       type: "session.update",
       session: {
         turn_detection: { type: "server_vad" },
@@ -88,10 +104,21 @@ export class OpenAIService {
         temperature: 0.8,
       },
     };
+  }
+
+  private sendSessionUpdate() {
+    if (!this.ws) {
+      console.error("WebSocket not connected to send session update");
+      return;
+    }
+    const sessionUpdate = this.getSessionUpdate();
     console.log("Sending session update:", JSON.stringify(sessionUpdate));
     this.ws.send(JSON.stringify(sessionUpdate));
+    console.log("Sent session update");
+  }
 
-    const initialConversationItem = {
+  private getInitialConversationItem(): any {
+    return {
       type: "conversation.item.create",
       item: {
         type: "message",
@@ -104,7 +131,14 @@ export class OpenAIService {
         ],
       },
     };
+  }
 
+  public initConversation() {
+    if (!this.ws) {
+      console.error("WebSocket not connected to start initial conversation");
+      return;
+    }
+    const initialConversationItem = this.getInitialConversationItem();
     console.log("Sending initial conversation item:");
     this.ws.send(JSON.stringify(initialConversationItem));
     this.ws.send(JSON.stringify({ type: "response.create" }));
