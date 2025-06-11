@@ -90,7 +90,13 @@ export class OpenAIService {
     };
     console.log("Sending session update:", JSON.stringify(sessionUpdate));
     this.ws.send(JSON.stringify(sessionUpdate));
+  }
 
+  public initConversation() {
+    if (!this.ws) {
+      console.error("WebSocket not connected to start initial conversation");
+      return;
+    }
     const initialConversationItem = {
       type: "conversation.item.create",
       item: {
