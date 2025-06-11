@@ -53,17 +53,17 @@ const server: Serve = {
       console.log("Connected to Server WebSocket");
       
       // Initialize OpenAI service
-      openAiService = new OpenAIService(OPENAI_API_KEY);
-      openAiService.connect(ws);
-      openAiService.initConversation();
-
-      // Initialize Deepgram service for speech-to-text
-      deepgramService = new DeepgramService(DEEPGRAM_API_KEY);
-      deepgramService.connect(ws);
+      // openAiService = new OpenAIService(OPENAI_API_KEY);
+      // openAiService.connect(ws);
+      console.log('🔌 OpenAI service connected');
 
       // Initialize Text-to-Speech service
       textToSpeechService = new TextToSpeechService(DEEPGRAM_API_KEY);
       textToSpeechService.connect(ws);
+
+      // Initialize Deepgram service for speech-to-text
+      deepgramService = new DeepgramService(DEEPGRAM_API_KEY, textToSpeechService);
+      deepgramService.connect(ws);
     },
 
     message: async (ws: ServerWebSocket<undefined>, message: string) => {
@@ -72,11 +72,19 @@ const server: Serve = {
 
         // Handle media events for speech-to-text
         if (data.event === 'media') {
-          openAiService?.handleMessage(message);
+          // console.log('🔊 Media event received:', data);
+          // openAiService?.handleMessage(message);
           deepgramService?.handleMessage(message);
+        }
+        else if (data.event === 'start') {
+          // openAiService?.handleMessage(message);
+          console.log('🔊 Start event received:', data);
+          textToSpeechService?.setStreamSid(data.streamSid);
+          // openAiService?.initConversation();
         }
         // Handle text-to-speech requests
         else if (data.event === 'tts') {
+          console.error('🔊 Text-to-Speech request received: Should not come here', data.text);
           await textToSpeechService?.convertToSpeech(data.text);
         }
       } catch (error) {

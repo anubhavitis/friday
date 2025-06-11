@@ -1,12 +1,21 @@
 import { createClient, LiveTranscriptionEvents } from '@deepgram/sdk';
 import { ServerWebSocket } from 'bun';
+import { TextToSpeechService } from './textToSpeech';
 
 export class DeepgramService {
   private connection: any = null;
   private clientWs: ServerWebSocket<undefined> | null = null;
+  private ttsWs: ServerWebSocket<undefined> | null = null;
   private streamSid: string | null = null;
 
-  constructor(private apiKey: string) {}
+  constructor(
+    private apiKey: string,
+    private textToSpeechService: TextToSpeechService
+  ) {
+    if (!apiKey) {
+      console.error('Deepgram API key is missing or invalid');
+    }
+  }
 
   public connect(clientWs: ServerWebSocket<undefined>) {
     this.clientWs = clientWs;
@@ -19,17 +28,13 @@ export class DeepgramService {
 
     // Create a live transcription connection
     this.connection = deepgram.listen.live({
-      model: 'nova-3',
-      language: 'en-IN',
-      smart_format: true,
       encoding: 'mulaw',
       sample_rate: 8000,
-      channels: 1,
-      diarize: false,
+      model: 'nova-2',
       punctuate: true,
-      vad_turnoff: 500,
-      utterances: true,
-      endpointing: 300,
+      interim_results: true,
+      endpointing: 200,
+      utterance_end_ms: 1000
     });
 
     // Set up event listeners
@@ -37,11 +42,16 @@ export class DeepgramService {
       console.log('Connected to Deepgram WebSocket');
     });
 
-    this.connection.on(LiveTranscriptionEvents.Close, () => {
-      console.log('Disconnected from Deepgram WebSocket');
+    this.connection.on(LiveTranscriptionEvents.Close, (event: any) => {
+      console.log('Disconnected from Deepgram WebSocket', {
+        code: event?.code,
+        reason: event?.reason,
+        wasClean: event?.wasClean,
+        timestamp: new Date().toISOString()
+      });
     });
 
-    this.connection.on(LiveTranscriptionEvents.Transcript, (data: any) => {
+    this.connection.on(LiveTranscriptionEvents.Transcript, async (data: any) => {
       const transcript = data.channel.alternatives[0].transcript;
       if (transcript) {
         // Print the transcribed text
@@ -49,18 +59,30 @@ export class DeepgramService {
         
         // Send the transcript back to the client
         this.clientWs?.send(JSON.stringify({
-          event: 'transcript',
+          event: 'tts',
           transcript: transcript
         }));
+
+        // Call text-to-speech service to convert the transcript to speech
+        try {
+          await this.textToSpeechService.convertToSpeech(transcript);
+        } catch (error) {
+          console.error('Error converting transcript to speech:', error);
+        }
       }
     });
 
     this.connection.on(LiveTranscriptionEvents.Metadata, (data: any) => {
-      console.log('Metadata received:', data);
+      console.log('Metadata received:', JSON.stringify(data, null, 2));
     });
 
     this.connection.on(LiveTranscriptionEvents.Error, (error: any) => {
-      console.error('Error in Deepgram connection:', error);
+      console.error('Error in Deepgram connection:', {
+        message: error.message,
+        code: error.code,
+        stack: error.stack,
+        timestamp: new Date().toISOString()
+      });
     });
   }
 
@@ -91,6 +113,7 @@ export class DeepgramService {
 
   public disconnect() {
     if (this.connection) {
+      console.log('Manually disconnecting Deepgram service...');
       this.connection.finish();
       this.connection = null;
     }
