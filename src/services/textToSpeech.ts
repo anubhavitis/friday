@@ -1,12 +1,22 @@
 import { createClient } from '@deepgram/sdk';
 import { ServerWebSocket } from 'bun';
+import { EventEmitter } from "events";
 
-export class TextToSpeechService {
+interface QueuedResponse {
+  text: string;
+  index: number;
+}
+
+export class TextToSpeechService extends EventEmitter {
   private clientWs: ServerWebSocket<undefined> | null = null;
   private deepgram: any;
   private streamSid: string | null = null;
+  private responseQueue: QueuedResponse[] = [];
+  private isProcessing: boolean = false;
+  private currentIndex: number = 0;
 
   constructor(private apiKey: string) {
+    super();
     this.deepgram = createClient(apiKey);
   }
 
@@ -14,46 +24,88 @@ export class TextToSpeechService {
     this.clientWs = clientWs;
   }
 
-  public async convertToSpeech(text: string) {
+  public async convertToSpeech(text: string, index: number) {
     try {
-      // Request audio from Deepgram using the correct API method
-      const response = await this.deepgram.speak.request(
-        { text },
-        {
-          model: "aura-2-thalia-en",
-          encoding: "mulaw",
-          container: "wav",
-          sample_rate: 8000
-        }
-      );
+      if (!this.streamSid) {
+        console.warn('No streamSid set, cannot send audio response');
+        return;
+      }
 
-      // Get the audio stream
-      const stream = await response.getStream();
-      
-      if (stream) {
-        // Convert the stream to an audio buffer
-        const buffer = await this.getAudioBuffer(stream);
-        
-        // Convert the buffer to base64
-        const base64Audio = buffer.toString('base64');
-        
-        // Send the audio back to the client
-        this.clientWs?.send(JSON.stringify({
-          event: 'media',
-          streamSid: this.streamSid,
-          media: {
-            payload: base64Audio
-          }
-        }));
+      // Add to queue
+      this.responseQueue.push({ text, index });
+      console.log(`📝 Added response ${index} to queue. Queue length: ${this.responseQueue.length}`);
 
-        console.log('🎵 Text-to-Speech conversion completed');
-      } else {
-        console.error('Error generating audio: No stream received');
+      // Start processing if not already processing
+      if (!this.isProcessing) {
+        await this.processQueue();
       }
     } catch (error) {
-      console.error('Error in text-to-speech conversion:', error);
+      console.error('Error queueing text-to-speech conversion:', error);
       throw error;
     }
+  }
+
+  private async processQueue() {
+    if (this.isProcessing || this.responseQueue.length === 0) {
+      return;
+    }
+
+    this.isProcessing = true;
+
+    while (this.responseQueue.length > 0) {
+      // Find the next response in sequence
+      const nextIndex = this.responseQueue.findIndex(item => item.index === this.currentIndex);
+      
+      if (nextIndex === -1) {
+        // If we can't find the next response, wait a bit and try again
+        await new Promise(resolve => setTimeout(resolve, 100));
+        continue;
+      }
+
+      const { text } = this.responseQueue[nextIndex];
+      this.responseQueue.splice(nextIndex, 1);
+
+      try {
+        // Request audio from Deepgram
+        const response = await this.deepgram.speak.request(
+          { text },
+          {
+            model: "aura-2-thalia-en",
+            encoding: "mulaw",
+            container: "wav",
+            sample_rate: 8000
+          }
+        );
+
+        // Get the audio stream
+        const stream = await response.getStream();
+        
+        if (stream) {
+          // Convert the stream to an audio buffer
+          const buffer = await this.getAudioBuffer(stream);
+          
+          // Convert the buffer to base64
+          const base64Audio = buffer.toString('base64');
+          
+          // Send the audio back to the client with the current streamSid
+          this.emit('text_to_speech_done', {
+            streamSid: this.streamSid,
+            base64Audio
+          });
+
+          console.log(`🎵 Text-to-Speech conversion completed for chunk ${this.currentIndex}`);
+          this.currentIndex++;
+        } else {
+          console.error('Error generating audio: No stream received');
+        }
+      } catch (error) {
+        console.error(`Error processing text-to-speech for chunk ${this.currentIndex}:`, error);
+        // Continue with next chunk even if this one failed
+        this.currentIndex++;
+      }
+    }
+
+    this.isProcessing = false;
   }
 
   public setStreamSid(streamSid: string) {
@@ -82,5 +134,8 @@ export class TextToSpeechService {
   public disconnect() {
     this.clientWs = null;
     this.streamSid = null;
+    this.responseQueue = [];
+    this.isProcessing = false;
+    this.currentIndex = 0;
   }
 } 

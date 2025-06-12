@@ -75,9 +75,18 @@ const server: Serve = {
       });
 
       // Add event listener for OpenAI response done events
-      openAiTextService.on('openai_response_done', (responseText: string) => {
-        console.log('📝 Received OpenAI response done event:', responseText);
-        textToSpeechService?.convertToSpeech(responseText);
+      openAiTextService.on('openai_response_done', (response: { partialResponseIndex: number, partialResponse: string }) => {
+        console.log(`📝 Received OpenAI response chunk ${response.partialResponseIndex}:`, response.partialResponse);
+        textToSpeechService?.convertToSpeech(response.partialResponse, response.partialResponseIndex);
+      });
+
+      textToSpeechService.on('text_to_speech_done', (response: { streamSid: string, base64Audio: string }) => {
+        console.log('🎵 Text-to-Speech conversion completed');
+        ws.send(JSON.stringify({
+          event: 'media',
+          streamSid: response.streamSid,
+          media: { payload: response.base64Audio }
+        }));
       });
     },
 
@@ -93,7 +102,12 @@ const server: Serve = {
         // Handle start event to set streamSid
         else if (data.event === 'start') {
           console.log('🔊 Start event received:', data);
-          textToSpeechService?.setStreamSid(data.start.streamSid);
+          const streamSid = data.start?.streamSid;
+          if (streamSid) {
+            textToSpeechService?.setStreamSid(streamSid);
+          } else {
+            console.warn('No streamSid found in start event');
+          }
         }
       } catch (error) {
         console.error('Error handling WebSocket message:', error);
