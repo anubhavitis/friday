@@ -5,6 +5,7 @@ export class TextToSpeechService {
   private clientWs: ServerWebSocket<undefined> | null = null;
   private deepgram: any;
   private streamSid: string | null = null;
+
   constructor(private apiKey: string) {
     this.deepgram = createClient(apiKey);
   }
@@ -80,5 +81,6 @@ export class TextToSpeechService {
 
   public disconnect() {
     this.clientWs = null;
+    this.streamSid = null;
   }
 } 

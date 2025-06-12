@@ -1,18 +1,17 @@
 import { createClient, LiveTranscriptionEvents } from '@deepgram/sdk';
 import { ServerWebSocket } from 'bun';
-import { TextToSpeechService } from './textToSpeech';
+import { OpenAITextService } from './openAiText';
 
 export class DeepgramService {
   private connection: any = null;
   private clientWs: ServerWebSocket<undefined> | null = null;
-  private ttsWs: ServerWebSocket<undefined> | null = null;
   private streamSid: string | null = null;
   private lastProcessedTranscript: string | null = null;
   private shouldReconnect: boolean = true;
 
   constructor(
     private apiKey: string,
-    private textToSpeechService: TextToSpeechService
+    private openAiTextService: OpenAITextService
   ) {
     if (!apiKey) {
       console.error('Deepgram API key is missing or invalid');
@@ -35,7 +34,7 @@ export class DeepgramService {
         sample_rate: 8000,
         model: 'nova-2',
         punctuate: true,
-        interim_results: true, // Keep interim results enabled
+        interim_results: true,
         endpointing: 200,
         utterance_end_ms: 1000
       });
@@ -53,7 +52,6 @@ export class DeepgramService {
           timestamp: new Date().toISOString()
         });
 
-        // Only attempt to reconnect if shouldReconnect is true
         if (this.shouldReconnect) {
           setTimeout(() => {
             console.log('Attempting to reconnect to Deepgram...');
@@ -74,18 +72,11 @@ export class DeepgramService {
           // Update the last processed transcript
           this.lastProcessedTranscript = transcript;
           
-          // Send the transcript back to the client
-          this.clientWs?.send(JSON.stringify({
-            event: 'tts',
-            transcript: transcript
+          // Send the transcript to OpenAI for processing
+          this.openAiTextService.handleMessage(JSON.stringify({
+            event: 'text',
+            text: transcript
           }));
-
-          // Call text-to-speech service to convert the transcript to speech
-          try {
-            await this.textToSpeechService.convertToSpeech(transcript);
-          } catch (error) {
-            console.error('Error converting transcript to speech:', error);
-          }
         }
       });
 
@@ -101,7 +92,6 @@ export class DeepgramService {
           timestamp: new Date().toISOString()
         });
 
-        // Only attempt to reconnect if shouldReconnect is true
         if (this.shouldReconnect) {
           setTimeout(() => {
             console.log('Attempting to reconnect to Deepgram after error...');
@@ -111,7 +101,6 @@ export class DeepgramService {
       });
     } catch (error) {
       console.error('Error setting up Deepgram connection:', error);
-      // Only attempt to reconnect if shouldReconnect is true
       if (this.shouldReconnect) {
         setTimeout(() => {
           console.log('Attempting to reconnect to Deepgram after setup error...');

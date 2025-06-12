@@ -1,6 +1,6 @@
 import { Serve, ServerWebSocket } from "bun";
 import { HealthHandler } from "./src/api/healths";
-import { OpenAIService } from "./src/services/openAi";
+import { OpenAITextService } from "./src/services/openAiText";
 import { DeepgramService } from "./src/services/deepgram";
 import { TextToSpeechService } from "./src/services/textToSpeech";
 import { IncomingHandler } from "./src/api/incoming";
@@ -21,7 +21,7 @@ if (!TWILIO_ACCOUNT_SID || !TWILIO_AUTH_TOKEN || !FROM_NUMBER || !SERVER || !OPE
   process.exit(1);
 }
 
-let openAiService: OpenAIService | null = null;
+let openAiTextService: OpenAITextService | null = null;
 let deepgramService: DeepgramService | null = null;
 let textToSpeechService: TextToSpeechService | null = null;
 const PORT = process.env.PORT || 3000;
@@ -52,40 +52,36 @@ const server: Serve = {
     open: (ws: ServerWebSocket<undefined>) => {
       console.log("Connected to Server WebSocket");
       
-      // Initialize OpenAI service
-      // openAiService = new OpenAIService(OPENAI_API_KEY);
-      // openAiService.connect(ws);
-      console.log('🔌 OpenAI service connected');
-
-      // Initialize Text-to-Speech service
+      // Initialize services in the correct order with dependencies
       textToSpeechService = new TextToSpeechService(DEEPGRAM_API_KEY);
       textToSpeechService.connect(ws);
+      console.log('🔊 Text-to-Speech service connected');
 
-      // Initialize Deepgram service for speech-to-text
-      deepgramService = new DeepgramService(DEEPGRAM_API_KEY, textToSpeechService);
+      openAiTextService = new OpenAITextService(OPENAI_API_KEY, textToSpeechService);
+      openAiTextService.connect(ws);
+      console.log('🤖 OpenAI Text service connected');
+
+      deepgramService = new DeepgramService(DEEPGRAM_API_KEY, openAiTextService);
       deepgramService.connect(ws);
+      console.log('🎤 Deepgram service connected');
+
+      // Initialize the conversation
+      openAiTextService.initConversation();
     },
 
     message: async (ws: ServerWebSocket<undefined>, message: string) => {
       try {
         const data = JSON.parse(message);
 
-        // Handle media events for speech-to-text
+        // Handle media events from Twilio
         if (data.event === 'media') {
-          // console.log('🔊 Media event received:', data);
-          // openAiService?.handleMessage(message);
+          // Send audio to Deepgram for speech-to-text
           deepgramService?.handleMessage(message);
         }
+        // Handle start event to set streamSid
         else if (data.event === 'start') {
-          // openAiService?.handleMessage(message);
           console.log('🔊 Start event received:', data);
-          textToSpeechService?.setStreamSid(data.streamSid);
-          // openAiService?.initConversation();
-        }
-        // Handle text-to-speech requests
-        else if (data.event === 'tts') {
-          console.error('🔊 Text-to-Speech request received: Should not come here', data.text);
-          await textToSpeechService?.convertToSpeech(data.text);
+          textToSpeechService?.setStreamSid(data.start.streamSid);
         }
       } catch (error) {
         console.error('Error handling WebSocket message:', error);
@@ -93,10 +89,10 @@ const server: Serve = {
     },
 
     close: (ws: ServerWebSocket<undefined>) => {
-      openAiService?.disconnect();
+      openAiTextService?.disconnect();
       deepgramService?.disconnect();
       textToSpeechService?.disconnect();
-      openAiService = null;
+      openAiTextService = null;
       deepgramService = null;
       textToSpeechService = null;
       console.log("Client disconnected.");
