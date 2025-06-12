@@ -1,5 +1,4 @@
 import { createClient } from '@deepgram/sdk';
-import { ServerWebSocket } from 'bun';
 import { EventEmitter } from "events";
 
 interface QueuedResponse {
@@ -8,7 +7,6 @@ interface QueuedResponse {
 }
 
 export class TextToSpeechService extends EventEmitter {
-  private clientWs: ServerWebSocket<undefined> | null = null;
   private deepgram: any;
   private streamSid: string | null = null;
   private responseQueue: QueuedResponse[] = [];
@@ -20,8 +18,8 @@ export class TextToSpeechService extends EventEmitter {
     this.deepgram = createClient(apiKey);
   }
 
-  public connect(clientWs: ServerWebSocket<undefined>) {
-    this.clientWs = clientWs;
+  public connect() {
+  
   }
 
   public async convertToSpeech(text: string, index: number) {
@@ -132,7 +130,7 @@ export class TextToSpeechService extends EventEmitter {
   }
 
   public disconnect() {
-    this.clientWs = null;
+
     this.streamSid = null;
     this.responseQueue = [];
     this.isProcessing = false;

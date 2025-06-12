@@ -4,7 +4,6 @@ import { OpenAITextService } from './openAiText';
 import { EventEmitter } from 'events';
 export class DeepgramService extends EventEmitter {
   private connection: any = null;
-  private clientWs: ServerWebSocket<undefined> | null = null;
   private streamSid: string | null = null;
   private lastProcessedTranscript: string | null = null;
   private shouldReconnect: boolean = true;
@@ -18,8 +17,7 @@ export class DeepgramService extends EventEmitter {
     }
   }
 
-  public connect(clientWs: ServerWebSocket<undefined>) {
-    this.clientWs = clientWs;
+  public connect() {
     this.setupDeepgramConnection();
   }
 
@@ -140,7 +138,6 @@ export class DeepgramService extends EventEmitter {
       this.connection.finish();
       this.connection = null;
     }
-    this.clientWs = null;
     this.streamSid = null;
     this.lastProcessedTranscript = null;
   }

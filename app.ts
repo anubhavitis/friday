@@ -54,7 +54,7 @@ const server: Serve = {
       
       // Initialize services in the correct order with dependencies
       textToSpeechService = new TextToSpeechService(DEEPGRAM_API_KEY);
-      textToSpeechService.connect(ws);
+      textToSpeechService.connect();
       console.log('🔊 Text-to-Speech service connected');
 
       openAiTextService = new OpenAITextService(OPENAI_API_KEY);
@@ -62,7 +62,7 @@ const server: Serve = {
       console.log('🤖 OpenAI Text service connected');
 
       deepgramService = new DeepgramService(DEEPGRAM_API_KEY);
-      deepgramService.connect(ws);
+      deepgramService.connect();
       console.log('🎤 Deepgram service connected');
 
       // Add event listener for transcript events
