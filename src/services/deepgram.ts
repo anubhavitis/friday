@@ -1,8 +1,8 @@
 import { createClient, LiveTranscriptionEvents } from '@deepgram/sdk';
 import { ServerWebSocket } from 'bun';
 import { OpenAITextService } from './openAiText';
-
-export class DeepgramService {
+import { EventEmitter } from 'events';
+export class DeepgramService extends EventEmitter {
   private connection: any = null;
   private clientWs: ServerWebSocket<undefined> | null = null;
   private streamSid: string | null = null;
@@ -11,8 +11,8 @@ export class DeepgramService {
 
   constructor(
     private apiKey: string,
-    private openAiTextService: OpenAITextService
   ) {
+    super();
     if (!apiKey) {
       console.error('Deepgram API key is missing or invalid');
     }
@@ -72,11 +72,7 @@ export class DeepgramService {
           // Update the last processed transcript
           this.lastProcessedTranscript = transcript;
           
-          // Send the transcript to OpenAI for processing
-          this.openAiTextService.handleMessage(JSON.stringify({
-            event: 'text',
-            text: transcript
-          }));
+          this.emit('deepgram_transcript_received', transcript);
         }
       });
 

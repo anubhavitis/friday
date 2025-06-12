@@ -57,16 +57,28 @@ const server: Serve = {
       textToSpeechService.connect(ws);
       console.log('🔊 Text-to-Speech service connected');
 
-      openAiTextService = new OpenAITextService(OPENAI_API_KEY, textToSpeechService);
-      openAiTextService.connect(ws);
+      openAiTextService = new OpenAITextService(OPENAI_API_KEY);
+      openAiTextService.connect();
       console.log('🤖 OpenAI Text service connected');
 
-      deepgramService = new DeepgramService(DEEPGRAM_API_KEY, openAiTextService);
+      deepgramService = new DeepgramService(DEEPGRAM_API_KEY);
       deepgramService.connect(ws);
       console.log('🎤 Deepgram service connected');
 
-      // Initialize the conversation
-      openAiTextService.initConversation();
+      // Add event listener for transcript events
+      deepgramService.on('deepgram_transcript_received', (transcript: string) => {
+        console.log('📝 Received transcript event:', transcript);
+        openAiTextService?.handleMessage(JSON.stringify({
+          event: 'text',
+          text: transcript
+        }));
+      });
+
+      // Add event listener for OpenAI response done events
+      openAiTextService.on('openai_response_done', (responseText: string) => {
+        console.log('📝 Received OpenAI response done event:', responseText);
+        textToSpeechService?.convertToSpeech(responseText);
+      });
     },
 
     message: async (ws: ServerWebSocket<undefined>, message: string) => {

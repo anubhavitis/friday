@@ -1,10 +1,8 @@
 import { WebSocket, MessageEvent } from "ws";
-import { ServerWebSocket } from "bun";
-import { TextToSpeechService } from "./textToSpeech";
+import { EventEmitter } from "events";
 
-export class OpenAITextService {
+export class OpenAITextService extends EventEmitter {
   private ws: WebSocket | null = null;
-  private clientWs: ServerWebSocket<undefined> | null = null;
 
   private readonly SYSTEM_MESSAGE =
     "You are a helpful and bubbly AI assistant who loves to chat about anything the user is interested in and is prepared to offer them facts. You have a penchant for dad jokes, owl jokes, and rickrolling – subtly. Always stay positive, but work in a joke when appropriate.";
@@ -18,11 +16,11 @@ export class OpenAITextService {
 
   constructor(
     private apiKey: string,
-    private textToSpeechService: TextToSpeechService
-  ) {}
+  ) {
+    super();
+  }
 
-  public connect(clientWs: ServerWebSocket<undefined>) {
-    this.clientWs = clientWs;
+  public connect() {
     this.ws = new WebSocket(`wss://api.openai.com/v1/realtime?model=${this.MODEL}`, {
       headers: {
         "Authorization": `Bearer ${this.apiKey}`,
@@ -45,14 +43,15 @@ export class OpenAITextService {
         if (response.type === "session.updated") {
           console.log("Session updated successfully:", response);
         }
-        if (response.type === "response.done" && response.response?.output?.[0]?.content?.[0]?.text) {
-          const responseText = response.response.output[0].content[0].text;
-          console.log(`OpenAI received text response: ${responseText}`);
+        if (response.type === "response.done" && response.response?.output?.[0]?.content?.[0]) {
+          const content = response.response.output[0].content[0];
+          const responseText = content.type === 'text' ? content.text : content.transcript;
+          console.log(`OpenAI received response: ${responseText}`);
           
           // Convert the response to speech
           try {
             console.log("Converting response to speech", responseText);
-            await this.textToSpeechService.convertToSpeech(responseText);
+            this.emit('openai_response_done', responseText);
           } catch (error) {
             console.error('Error converting OpenAI response to speech:', error);
           }
@@ -66,6 +65,7 @@ export class OpenAITextService {
       console.log("Connected to the OpenAI Realtime API");
       console.log("WebSocket readyState:", this.ws?.readyState);
       setTimeout(() => this.sendSessionUpdate(), 250);
+      this.initConversation();
     };
 
     this.ws.onclose = (event: any) => {
@@ -181,7 +181,6 @@ export class OpenAITextService {
       console.log(`WebSocket not OPEN during disconnect (state: ${this.ws?.readyState})`);
     }
     this.ws = null;
-    this.clientWs = null;
     console.log("OpenAI Text service disconnected");
   }
 } 
