@@ -68,7 +68,7 @@ const server: Serve = {
       openAiTextService.connect();
       console.log('APP: OpenAI Text service connected');
 
-      deepgramService = new DeepgramService(DEEPGRAM_API_KEY, memoryService);
+      deepgramService = new DeepgramService(DEEPGRAM_API_KEY);
       deepgramService.connect();
       console.log('APP: Deepgram service connected');
 
