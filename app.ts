@@ -30,6 +30,7 @@ const memoryService = new MemoryService(MEM0_API_KEY);
 let openAiTextService: OpenAITextService | null = null;
 let deepgramService: DeepgramService | null = null;
 let textToSpeechService: TextToSpeechService | null = null;
+let streamSidTwilio: string | null = null;
 const PORT = process.env.PORT || 3000;
 
 const server: Serve = {
@@ -72,12 +73,28 @@ const server: Serve = {
       console.log('APP: Deepgram service connected');
 
       // Add event listener for transcript events
-      deepgramService.on('deepgram_transcript_received', (transcript: string) => {
-        console.log('APP: Received transcript event:', transcript);
+      deepgramService.on('transcription', (transcript: string) => {
+        console.log('📝 Received transcript event:', transcript);
         openAiTextService?.handleMessage(JSON.stringify({
           event: 'text',
           text: transcript
         }));
+      });
+
+      // Handle user speaking events
+      deepgramService.on('user_speaking', (isSpeaking: boolean) => {
+        console.log(`🎤 User ${isSpeaking ? 'started' : 'stopped'} speaking`);
+        if (isSpeaking) {
+          // Clear current AI response when user starts speaking
+          ws.send(JSON.stringify({
+            streamSid: streamSidTwilio,
+            event: 'clear',
+          }));
+        }
+      });
+
+      deepgramService.on('utterance', (utterance: string) => {
+        console.log('🎤 Received utterance event:', utterance);
       });
 
       // Add event listener for OpenAI response done events
@@ -111,6 +128,7 @@ const server: Serve = {
           const streamSid = data.start?.streamSid;
           if (streamSid) {
             textToSpeechService?.setStreamSid(streamSid);
+            streamSidTwilio = streamSid;
           } else {
             console.warn('APP: No streamSid found in start event');
           }

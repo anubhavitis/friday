@@ -131,6 +131,11 @@ export class OpenAITextService extends EventEmitter {
 
       if (data.event === "text") {
         console.log("OPENAI_TEXT: Processing text message:", data.text);
+
+
+        const memory_query = "give any information related to this user question:" + data.text;
+        const memory_result: Memory[] = await this.memoryService.search(memory_query, { user_id: "anubhav" });
+        console.log("mem0ai result:", memory_result);
         
         // Add user message to conversation history
         this.conversationHistory.push({ role: "user", content: data.text });
