@@ -47,12 +47,18 @@ export class OpenAIService {
           console.log("Session updated successfully:", response);
         }
         if (response.type === "response.audio.delta" && response.delta) {
+          console.log(`OpenAI received event: ${response.type}, ${this.streamSid}`);
           const audioDelta = {
             event: "media",
             streamSid: this.streamSid,
             media: { payload: Buffer.from(response.delta, "base64").toString("base64") },
           };
-          this.clientWs?.send(JSON.stringify(audioDelta));
+          if (this.clientWs) {
+            this.clientWs.send(JSON.stringify(audioDelta));
+          }
+          else {
+            console.error("No client WebSocket found to send audio delta");
+          }
         }
       } catch (error) {
         console.error("Error processing OpenAI message:", error, "Raw message:", event);
@@ -90,7 +96,13 @@ export class OpenAIService {
     };
     console.log("Sending session update:", JSON.stringify(sessionUpdate));
     this.ws.send(JSON.stringify(sessionUpdate));
+  }
 
+  public initConversation() {
+    if (!this.ws) {
+      console.error("WebSocket not connected to start initial conversation");
+      return;
+    }
     const initialConversationItem = {
       type: "conversation.item.create",
       item: {

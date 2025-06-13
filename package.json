@@ -9,9 +9,11 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@deepgram/sdk": "^4.4.0",
     "@openai/agents": "^0.0.5",
     "bun-types": "latest",
     "dotenv": "^16.5.0",
+    "openai": "^5.3.0",
     "twilio": "^5.7.0"
   },
   "devDependencies": {

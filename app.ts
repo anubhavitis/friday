@@ -1,8 +1,9 @@
 import { Serve, ServerWebSocket } from "bun";
 import { HealthHandler } from "./src/api/healths";
-import twilio from "twilio";
-import VoiceResponse from "twilio/lib/twiml/VoiceResponse";
-import { OpenAIService } from "./services/openAi";
+import { OpenAITextService } from "./src/services/openAiText";
+import { DeepgramService } from "./src/services/deepgram";
+import { TextToSpeechService } from "./src/services/textToSpeech";
+import { IncomingHandler } from "./src/api/incoming";
 
 const {
   TWILIO_ACCOUNT_SID,
@@ -10,74 +11,21 @@ const {
   FROM_NUMBER,
   SERVER,
   OPENAI_API_KEY,
+  DEEPGRAM_API_KEY,
 } = process.env;
 
-if (!TWILIO_ACCOUNT_SID || !TWILIO_AUTH_TOKEN || !FROM_NUMBER || !SERVER || !OPENAI_API_KEY) {
+if (!TWILIO_ACCOUNT_SID || !TWILIO_AUTH_TOKEN || !FROM_NUMBER || !SERVER || !OPENAI_API_KEY || !DEEPGRAM_API_KEY) {
   console.error(
-    "One or more environment variables are missing. Please ensure TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, PHONE_NUMBER_FROM, DOMAIN, and OPENAI_API_KEY are set."
+    "One or more environment variables are missing. Please ensure TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, PHONE_NUMBER_FROM, DOMAIN, OPENAI_API_KEY, and DEEPGRAM_API_KEY are set."
   );
   process.exit(1);
 }
 
-let openAiService: OpenAIService | null = null;
+let openAiTextService: OpenAITextService | null = null;
+let deepgramService: DeepgramService | null = null;
+let textToSpeechService: TextToSpeechService | null = null;
+let streamSidTwilio: string | null = null;
 const PORT = process.env.PORT || 3000;
-
-const outboundTwiML = `
-<?xml version="1.0" encoding="UTF-8"?>
-<Response>
-  <Connect>
-    <Stream url="wss://${SERVER}/media-stream" />
-  </Connect>
-</Response>`;
-
-const inboundTwiML = `
-    <?xml version="1.0" encoding="UTF-8"?>
-    <Response>
-      <Say>Please wait while we connect your call to the AI voice assistant, powered by Twilio and the OpenAI Realtime API</Say>
-      <Pause length="1"/>
-      <Say>OK, you can start talking!</Say>
-      <Connect>
-        <Stream url="wss://${SERVER}/media-stream" />
-      </Connect>
-    </Response>
-  `;
-
-// Function to check if a number is allowed to be called. With your own function, be sure 
-// to do your own diligence to be compliant.
-const client = twilio(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN);
-
-async function isNumberAllowed(to: string) {
-  try {
-    // Check if the number is a Twilio phone number in the account, for example, when making a call to the Twilio Dev Phone
-    const incomingNumbers = await client.incomingPhoneNumbers.list({ phoneNumber: to });
-    if (incomingNumbers.length > 0) {
-      return true;
-    }
-
-    // Check if the number is a verified outgoing caller ID. https://www.twilio.com/docs/voice/api/outgoing-caller-ids
-    const outgoingCallerIds = await client.outgoingCallerIds.list({ phoneNumber: to });
-    if (outgoingCallerIds.length > 0) {
-      return true;
-    }
-
-    return false;
-  } catch (error) {
-    console.error("Error checking phone number:", error);
-    return false;
-  }
-}
-
-const incomingHandler = (request: Request) => {
-  const response = new VoiceResponse();
-  const connect = response.connect();
-  connect.stream({ url: `wss://${SERVER}/media-stream` });
-
-  return new Response(response.toString(), {
-    headers: {
-      "Content-Type": "text/xml",
-    },
-  });
-};
 
 const server: Serve = {
   port: PORT,
@@ -88,7 +36,7 @@ const server: Serve = {
     if (pathname === "/health") {
       return HealthHandler.GET(req);
     } else if (pathname === "/voice/incoming") {
-      return incomingHandler(req);
+      return IncomingHandler.GET(req);
     } else if (pathname === "/media-stream") {
       console.log("Media stream request received, host:", req.headers.get("host"));
       if (this.upgrade(req)) {
@@ -104,17 +52,93 @@ const server: Serve = {
   websocket: {
     open: (ws: ServerWebSocket<undefined>) => {
       console.log("Connected to Server WebSocket");
-      openAiService = new OpenAIService(OPENAI_API_KEY);
-      openAiService.connect(ws);
+      
+      // Initialize services in the correct order with dependencies
+      textToSpeechService = new TextToSpeechService(DEEPGRAM_API_KEY);
+      textToSpeechService.connect();
+      console.log('🔊 Text-to-Speech service connected');
+
+      openAiTextService = new OpenAITextService(OPENAI_API_KEY);
+      openAiTextService.connect();
+      console.log('🤖 OpenAI Text service connected');
+
+      deepgramService = new DeepgramService(DEEPGRAM_API_KEY);
+      deepgramService.connect();
+      console.log('🎤 Deepgram service connected');
+
+      // Add event listener for transcript events
+      deepgramService.on('transcription', (transcript: string) => {
+        console.log('📝 Received transcript event:', transcript);
+        openAiTextService?.handleMessage(JSON.stringify({
+          event: 'text',
+          text: transcript
+        }));
+      });
+
+      // Handle user speaking events
+      deepgramService.on('user_speaking', (isSpeaking: boolean) => {
+        console.log(`🎤 User ${isSpeaking ? 'started' : 'stopped'} speaking`);
+        if (isSpeaking) {
+          // Clear current AI response when user starts speaking
+          ws.send(JSON.stringify({
+            streamSid: streamSidTwilio,
+            event: 'clear',
+          }));
+        }
+      });
+
+      deepgramService.on('utterance', (utterance: string) => {
+        console.log('🎤 Received utterance event:', utterance);
+      });
+
+      // Add event listener for OpenAI response done events
+      openAiTextService.on('openai_response_done', (response: { partialResponseIndex: number, partialResponse: string }) => {
+        console.log(`📝 Received OpenAI response chunk ${response.partialResponseIndex}:`, response.partialResponse);
+        textToSpeechService?.convertToSpeech(response.partialResponse, response.partialResponseIndex);
+      });
+
+      textToSpeechService.on('text_to_speech_done', (response: { streamSid: string, base64Audio: string }) => {
+        console.log('🎵 Text-to-Speech conversion completed');
+        ws.send(JSON.stringify({
+          event: 'media',
+          streamSid: response.streamSid,
+          media: { payload: response.base64Audio }
+        }));
+      });
     },
 
-    message: (ws: ServerWebSocket<undefined>, message: string) => {
-      openAiService?.handleMessage(message);
+    message: async (ws: ServerWebSocket<undefined>, message: string) => {
+      try {
+        const data = JSON.parse(message);
+
+        // Handle media events from Twilio
+        if (data.event === 'media') {
+          // Send audio to Deepgram for speech-to-text
+          deepgramService?.handleMessage(message);
+        }
+        // Handle start event to set streamSid
+        else if (data.event === 'start') {
+          console.log('🔊 Start event received:', data);
+          const streamSid = data.start?.streamSid;
+          if (streamSid) {
+            textToSpeechService?.setStreamSid(streamSid);
+            streamSidTwilio = streamSid;
+          } else {
+            console.warn('No streamSid found in start event');
+          }
+        }
+      } catch (error) {
+        console.error('Error handling WebSocket message:', error);
+      }
     },
 
     close: (ws: ServerWebSocket<undefined>) => {
-      openAiService?.disconnect();
-      openAiService = null;
+      openAiTextService?.disconnect();
+      deepgramService?.disconnect();
+      textToSpeechService?.disconnect();
+      openAiTextService = null;
+      deepgramService = null;
+      textToSpeechService = null;
       console.log("Client disconnected.");
     },
   },
