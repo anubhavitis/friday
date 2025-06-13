@@ -3,6 +3,7 @@ import OpenAI from "openai";
 import { ChatCompletionMessageParam } from "openai/resources/chat/completions";
 import { MemoryService } from "./memory";
 import { Memory } from "mem0ai";
+import { EventName } from "../enums/eventEmitter";
 
 interface OpenAIResponse {
   partialResponseIndex: number;
@@ -108,7 +109,7 @@ export class OpenAITextService extends EventEmitter {
               partialResponse: formattedText
             };
 
-            this.emit('openai_response_done', response);
+            this.emit(EventName.OPENAI_RESPONSE_DONE, response);
             this.partialResponseIndex++;
           }
           partialResponse = '';
@@ -166,7 +167,7 @@ export class OpenAITextService extends EventEmitter {
                 partialResponse: formattedText
               };
 
-              this.emit('openai_response_done', response);
+              this.emit(EventName.OPENAI_RESPONSE_DONE, response);
               this.partialResponseIndex++;
             }
             partialResponse = '';

@@ -2,8 +2,9 @@ import { createClient, LiveTranscriptionEvents } from '@deepgram/sdk';
 import { EventEmitter } from 'events';
 import { MemoryService } from './memory';
 import { Memory } from 'mem0ai';
+import { EventName } from '../enums/eventEmitter';
 
-export class DeepgramService extends EventEmitter {
+export class SpeechToTextDeepgramService extends EventEmitter {
   private connection: any = null;
   private streamSid: string | null = null;
   private shouldReconnect: boolean = true;
@@ -74,7 +75,7 @@ export class DeepgramService extends EventEmitter {
           console.log('UtteranceEnd received');
           if (this.finalResult.trim().length > 0) {
             console.log('Emitting final transcription:', this.finalResult);
-            this.emit('transcription', this.finalResult);
+            this.emit(EventName.STT_DEEPGRAM_TRANSCRIPTION, this.finalResult);
             this.finalResult = '';
           }
           this.isUserSpeaking = false;
@@ -89,7 +90,7 @@ export class DeepgramService extends EventEmitter {
           
           if (data.speech_final === true) {
             console.log('Speech final received, emitting transcription');
-            this.emit('transcription', this.finalResult);
+            this.emit(EventName.STT_DEEPGRAM_TRANSCRIPTION, this.finalResult);
             this.finalResult = '';
             this.isUserSpeaking = false;
           }
@@ -100,16 +101,16 @@ export class DeepgramService extends EventEmitter {
           // If this is the first utterance after silence, emit user_speaking event
           if (!this.isUserSpeaking) {
             this.isUserSpeaking = true;
-            this.emit('user_speaking', true);
+            this.emit(EventName.STT_DEEPGRAM_USER_SPEAKING, true);
           }
           
-          this.emit('utterance', text);
+          this.emit(EventName.STT_DEEPGRAM_UTTERANCE, text);
 
           // Set a timeout to emit the transcription if we don't get a final result
           this.utteranceTimeout = setTimeout(() => {
             if (this.finalResult.trim().length > 0) {
               console.log('Emitting transcription after timeout:', this.finalResult);
-              this.emit('transcription', this.finalResult);
+              this.emit(EventName.STT_DEEPGRAM_TRANSCRIPTION, this.finalResult);
               this.finalResult = '';
               this.isUserSpeaking = false;
             }
@@ -119,12 +120,12 @@ export class DeepgramService extends EventEmitter {
           const timeSinceLastSpeech = Date.now() - this.lastSpeechTime;
           if (this.isUserSpeaking && timeSinceLastSpeech > this.silenceThreshold) {
             this.isUserSpeaking = false;
-            this.emit('user_speaking', false);
+            this.emit(EventName.STT_DEEPGRAM_USER_SPEAKING, false);
             
             // If we have accumulated text, emit it as transcription
             if (this.finalResult.trim().length > 0) {
               console.log('Emitting transcription after silence:', this.finalResult);
-              this.emit('transcription', this.finalResult);
+              this.emit(EventName.STT_DEEPGRAM_TRANSCRIPTION, this.finalResult);
               this.finalResult = '';
             }
           }

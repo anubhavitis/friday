@@ -1,10 +1,10 @@
 import { Serve, ServerWebSocket } from "bun";
 import { HealthHandler } from "./src/api/healths";
 import { OpenAITextService } from "./src/services/openAiText";
-import { DeepgramService } from "./src/services/deepgram";
-import { TextToSpeechService } from "./src/services/textToSpeech";
+import { SpeechToTextDeepgramService } from "./src/services/speechToTextDeepgram";
+import { TextToSpeechDeepgramService } from "./src/services/textToSpeechDeepgram";
 import { IncomingHandler } from "./src/api/incoming";
-
+import { EventName } from "./src/enums/eventEmitter";
 import MemoryClient, { Message } from 'mem0ai';
 import { MemoryService } from "./src/services/memory";
 
@@ -28,8 +28,8 @@ if (!TWILIO_ACCOUNT_SID || !TWILIO_AUTH_TOKEN || !FROM_NUMBER || !SERVER || !OPE
 const memoryService = new MemoryService(MEM0_API_KEY);
 
 let openAiTextService: OpenAITextService | null = null;
-let deepgramService: DeepgramService | null = null;
-let textToSpeechService: TextToSpeechService | null = null;
+let speechToTextdeepgramService: SpeechToTextDeepgramService | null = null;
+let textToSpeechDeepgramService: TextToSpeechDeepgramService | null = null;
 let streamSidTwilio: string | null = null;
 const PORT = process.env.PORT || 3000;
 
@@ -60,20 +60,20 @@ const server: Serve = {
       console.log("APP: Connected to Server WebSocket");
       
       // Initialize services in the correct order with dependencies
-      textToSpeechService = new TextToSpeechService(DEEPGRAM_API_KEY);
-      textToSpeechService.connect();
+      textToSpeechDeepgramService = new TextToSpeechDeepgramService(DEEPGRAM_API_KEY);
+      textToSpeechDeepgramService.connect();
       console.log('APP: Text-to-Speech service connected');
 
       openAiTextService = new OpenAITextService(OPENAI_API_KEY, memoryService);
       openAiTextService.connect();
       console.log('APP: OpenAI Text service connected');
 
-      deepgramService = new DeepgramService(DEEPGRAM_API_KEY);
-      deepgramService.connect();
+      speechToTextdeepgramService = new SpeechToTextDeepgramService(DEEPGRAM_API_KEY);
+      speechToTextdeepgramService.connect();
       console.log('APP: Deepgram service connected');
 
       // Add event listener for transcript events
-      deepgramService.on('transcription', (transcript: string) => {
+      speechToTextdeepgramService.on(EventName.STT_DEEPGRAM_TRANSCRIPTION, (transcript: string) => {
         console.log('📝 Received transcript event:', transcript);
         openAiTextService?.handleMessage(JSON.stringify({
           event: 'text',
@@ -82,7 +82,7 @@ const server: Serve = {
       });
 
       // Handle user speaking events
-      deepgramService.on('user_speaking', (isSpeaking: boolean) => {
+      speechToTextdeepgramService.on(EventName.STT_DEEPGRAM_USER_SPEAKING, (isSpeaking: boolean) => {
         console.log(`🎤 User ${isSpeaking ? 'started' : 'stopped'} speaking`);
         if (isSpeaking) {
           // Clear current AI response when user starts speaking
@@ -93,17 +93,17 @@ const server: Serve = {
         }
       });
 
-      deepgramService.on('utterance', (utterance: string) => {
+      speechToTextdeepgramService.on(EventName.STT_DEEPGRAM_UTTERANCE, (utterance: string) => {
         console.log('🎤 Received utterance event:', utterance);
       });
 
       // Add event listener for OpenAI response done events
-      openAiTextService.on('openai_response_done', (response: { partialResponseIndex: number, partialResponse: string }) => {
+      openAiTextService.on(EventName.OPENAI_RESPONSE_DONE, (response: { partialResponseIndex: number, partialResponse: string }) => {
         console.log(`APP: Received OpenAI response chunk ${response.partialResponseIndex}:`, response.partialResponse);
-        textToSpeechService?.convertToSpeech(response.partialResponse, response.partialResponseIndex);
+        textToSpeechDeepgramService?.convertToSpeech(response.partialResponse, response.partialResponseIndex);
       });
 
-      textToSpeechService.on('text_to_speech_done', (response: { streamSid: string, base64Audio: string }) => {
+      textToSpeechDeepgramService.on(EventName.TTS_DEEPGRAM_DONE, (response: { streamSid: string, base64Audio: string }) => {
         console.log('APP: Text-to-Speech conversion completed');
         ws.send(JSON.stringify({
           event: 'media',
@@ -120,14 +120,14 @@ const server: Serve = {
         // Handle media events from Twilio
         if (data.event === 'media') {
           // Send audio to Deepgram for speech-to-text
-          deepgramService?.handleMessage(message);
+          speechToTextdeepgramService?.handleMessage(message);
         }
         // Handle start event to set streamSid
         else if (data.event === 'start') {
           console.log('APP: Start event received, streamSid:', data?.streamSid);
           const streamSid = data.start?.streamSid;
           if (streamSid) {
-            textToSpeechService?.setStreamSid(streamSid);
+            textToSpeechDeepgramService?.setStreamSid(streamSid);
             streamSidTwilio = streamSid;
           } else {
             console.warn('APP: No streamSid found in start event');
@@ -140,11 +140,11 @@ const server: Serve = {
 
     close: (ws: ServerWebSocket<undefined>) => {
       openAiTextService?.disconnect();
-      deepgramService?.disconnect();
-      textToSpeechService?.disconnect();
+      speechToTextdeepgramService?.disconnect();
+      textToSpeechDeepgramService?.disconnect();
       openAiTextService = null;
-      deepgramService = null;
-      textToSpeechService = null;
+      speechToTextdeepgramService = null;
+      textToSpeechDeepgramService = null;
       console.log("APP: Client disconnected.");
     },
   },

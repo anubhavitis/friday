@@ -1,12 +1,12 @@
 import { createClient } from '@deepgram/sdk';
 import { EventEmitter } from "events";
-
+import { EventName } from "../enums/eventEmitter";
 interface QueuedResponse {
   text: string;
   index: number;
 }
 
-export class TextToSpeechService extends EventEmitter {
+export class TextToSpeechDeepgramService extends EventEmitter {
   private deepgram: any;
   private streamSid: string | null = null;
   private responseQueue: QueuedResponse[] = [];
@@ -86,7 +86,7 @@ export class TextToSpeechService extends EventEmitter {
           const base64Audio = buffer.toString('base64');
           
           // Send the audio back to the client with the current streamSid
-          this.emit('text_to_speech_done', {
+          this.emit(EventName.TTS_DEEPGRAM_DONE, {
             streamSid: this.streamSid,
             base64Audio
           });
