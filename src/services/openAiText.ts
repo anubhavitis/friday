@@ -10,6 +10,12 @@ interface OpenAIResponse {
 export class OpenAITextService extends EventEmitter {
   private client: OpenAI;
   private conversationHistory: ChatCompletionMessageParam[] = [];
+  private readonly PERSONA = {
+            description: "You are a virtual AI assistant, similar to Jarvis from Marvel's IronMan. Your personality is friendly and straightforward, making conversations enjoyable. " +
+            "Respond in a concise manner, using a maximum of 2 sentences for each response. Avoid lengthy explanations and stick to simple, direct answers. " +
+            "Make sure to stay on topic and keep communications clear and straightforward. You don't sugarcoat your answers, you are straightforward and to the point. Also, add a '*' whereever you want to give natural pauses as your response is being read out loud."
+        };
+
   private readonly SYSTEM_MESSAGE =
     "You are a helpful and bubbly AI assistant who loves to chat about anything the user is interested in and is prepared to offer them facts. You have a penchant for dad jokes, owl jokes, and rickrolling – subtly. Always stay positive, but work in a joke when appropriate. And also reply with a short and concise answer. You must add a '•' symbol every 15 to 20 words at natural pauses where your response can be split for text to speech.";
   private readonly MODEL = "gpt-4";
@@ -37,16 +43,16 @@ export class OpenAITextService extends EventEmitter {
     try {
       // Initialize conversation with a greeting
       await this.initConversation();
-      console.log("Connected to OpenAI API");
+      console.log("OPENAI_TEXT: Connected to OpenAI API");
     } catch (error) {
-      console.error("Error connecting to OpenAI:", error);
+      console.error("OPENAI_TEXT: Error connecting to OpenAI:", error);
       throw error;
     }
   }
 
   private async initConversation() {
     try {
-      const greetingMessage = 'Greet the user with "Hello there! I\'m an AI text assistant powered by OpenAI. How can I help you today?"';
+      const greetingMessage = 'Here is your persona: ' + this.PERSONA.description + '. Greet user as per your persona, and ask them how is their day going."';
       this.conversationHistory.push({ role: "user", content: greetingMessage });
 
       const stream = await this.client.chat.completions.create({
@@ -87,7 +93,7 @@ export class OpenAITextService extends EventEmitter {
         this.conversationHistory.push({ role: "assistant", content: completeResponse });
       }
     } catch (error) {
-      console.error("Error in initial conversation:", error);
+      console.error("OPENAI_TEXT: Error in initial conversation:", error);
       throw error;
     }
   }
@@ -97,7 +103,7 @@ export class OpenAITextService extends EventEmitter {
       const data = JSON.parse(message);
 
       if (data.event === "text") {
-        console.log("Processing text message:", data.text);
+        console.log("OPENAI_TEXT: Processing text message:", data.text);
         
         // Add user message to conversation history
         this.conversationHistory.push({ role: "user", content: data.text });
@@ -140,21 +146,21 @@ export class OpenAITextService extends EventEmitter {
           this.conversationHistory.push({ role: "assistant", content: completeResponse });
         }
       } else {
-        console.log("Received non-text event:", data.event);
+        console.log("OPENAI_TEXT: Received non-text event:", data.event);
       }
     } catch (error) {
-      console.error("Error processing message:", error);
+      console.error("OPENAI_TEXT: Error processing message:", error);
       throw error;
     }
   }
 
   public disconnect() {
-    console.log("Disconnecting OpenAI Text service...");
+    console.log("OPENAI_TEXT: Disconnecting OpenAI Text service...");
     // Clear conversation history on disconnect
     this.conversationHistory = [
       { role: "system", content: this.SYSTEM_MESSAGE }
     ];
     this.partialResponseIndex = 0;
-    console.log("OpenAI Text service disconnected");
+    console.log("OPENAI_TEXT: OpenAI Text service disconnected");
   }
 } 

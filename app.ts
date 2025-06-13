@@ -16,7 +16,7 @@ const {
 
 if (!TWILIO_ACCOUNT_SID || !TWILIO_AUTH_TOKEN || !FROM_NUMBER || !SERVER || !OPENAI_API_KEY || !DEEPGRAM_API_KEY) {
   console.error(
-    "One or more environment variables are missing. Please ensure TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, PHONE_NUMBER_FROM, DOMAIN, OPENAI_API_KEY, and DEEPGRAM_API_KEY are set."
+    "APP: One or more environment variables are missing. Please ensure TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, PHONE_NUMBER_FROM, DOMAIN, OPENAI_API_KEY, and DEEPGRAM_API_KEY are set."
   );
   process.exit(1);
 }
@@ -37,12 +37,12 @@ const server: Serve = {
     } else if (pathname === "/voice/incoming") {
       return IncomingHandler.GET(req);
     } else if (pathname === "/media-stream") {
-      console.log("Media stream request received, host:", req.headers.get("host"));
+      console.log("APP: Media stream request received, host:", req.headers.get("host"));
       if (this.upgrade(req)) {
-        console.log("Upgraded to WebSocket");
+        console.log("APP: Upgraded to WebSocket");
         return; // WebSocket will take over
       }
-      console.log("Failed to upgrade to WebSocket");
+      console.log("APP: Failed to upgrade to WebSocket");
       return new Response("Failed to upgrade to WebSocket", { status: 400 });
     } else {
       return new Response("Not Found", { status: 404 });
@@ -50,24 +50,24 @@ const server: Serve = {
   },
   websocket: {
     open: (ws: ServerWebSocket<undefined>) => {
-      console.log("Connected to Server WebSocket");
+      console.log("APP: Connected to Server WebSocket");
       
       // Initialize services in the correct order with dependencies
       textToSpeechService = new TextToSpeechService(DEEPGRAM_API_KEY);
       textToSpeechService.connect();
-      console.log('🔊 Text-to-Speech service connected');
+      console.log('APP: Text-to-Speech service connected');
 
       openAiTextService = new OpenAITextService(OPENAI_API_KEY);
       openAiTextService.connect();
-      console.log('🤖 OpenAI Text service connected');
+      console.log('APP: OpenAI Text service connected');
 
       deepgramService = new DeepgramService(DEEPGRAM_API_KEY);
       deepgramService.connect();
-      console.log('🎤 Deepgram service connected');
+      console.log('APP: Deepgram service connected');
 
       // Add event listener for transcript events
       deepgramService.on('deepgram_transcript_received', (transcript: string) => {
-        console.log('📝 Received transcript event:', transcript);
+        console.log('APP: Received transcript event:', transcript);
         openAiTextService?.handleMessage(JSON.stringify({
           event: 'text',
           text: transcript
@@ -76,12 +76,12 @@ const server: Serve = {
 
       // Add event listener for OpenAI response done events
       openAiTextService.on('openai_response_done', (response: { partialResponseIndex: number, partialResponse: string }) => {
-        console.log(`📝 Received OpenAI response chunk ${response.partialResponseIndex}:`, response.partialResponse);
+        console.log(`APP: Received OpenAI response chunk ${response.partialResponseIndex}:`, response.partialResponse);
         textToSpeechService?.convertToSpeech(response.partialResponse, response.partialResponseIndex);
       });
 
       textToSpeechService.on('text_to_speech_done', (response: { streamSid: string, base64Audio: string }) => {
-        console.log('🎵 Text-to-Speech conversion completed');
+        console.log('APP: Text-to-Speech conversion completed');
         ws.send(JSON.stringify({
           event: 'media',
           streamSid: response.streamSid,
@@ -101,16 +101,16 @@ const server: Serve = {
         }
         // Handle start event to set streamSid
         else if (data.event === 'start') {
-          console.log('🔊 Start event received:', data);
+          console.log('APP: Start event received, streamSid:', data?.streamSid);
           const streamSid = data.start?.streamSid;
           if (streamSid) {
             textToSpeechService?.setStreamSid(streamSid);
           } else {
-            console.warn('No streamSid found in start event');
+            console.warn('APP: No streamSid found in start event');
           }
         }
       } catch (error) {
-        console.error('Error handling WebSocket message:', error);
+        console.error('APP: Error handling WebSocket message:', error);
       }
     },
 
@@ -121,10 +121,10 @@ const server: Serve = {
       openAiTextService = null;
       deepgramService = null;
       textToSpeechService = null;
-      console.log("Client disconnected.");
+      console.log("APP: Client disconnected.");
     },
   },
 };
 
-console.log(`Server is running on port ${PORT}`);
+console.log(`APP: Server is running on port ${PORT}`);
 Bun.serve(server);

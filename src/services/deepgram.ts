@@ -13,7 +13,7 @@ export class DeepgramService extends EventEmitter {
   ) {
     super();
     if (!apiKey) {
-      console.error('Deepgram API key is missing or invalid');
+      console.error('DEEPGRAM: API key is missing or invalid');
     }
   }
 
@@ -39,20 +39,15 @@ export class DeepgramService extends EventEmitter {
 
       // Set up event listeners
       this.connection.on(LiveTranscriptionEvents.Open, () => {
-        console.log('Connected to Deepgram WebSocket');
+        console.log('DEEPGRAM: Connected to Deepgram WebSocket');
       });
 
       this.connection.on(LiveTranscriptionEvents.Close, (event: any) => {
-        console.log('Disconnected from Deepgram WebSocket', {
-          code: event?.code,
-          reason: event?.reason,
-          wasClean: event?.wasClean,
-          timestamp: new Date().toISOString()
-        });
+        console.log('DEEPGRAM: Disconnected from Deepgram WebSocket', event?.reason);
 
         if (this.shouldReconnect) {
           setTimeout(() => {
-            console.log('Attempting to reconnect to Deepgram...');
+            console.log('DEEPGRAM: Attempting to reconnect to Deepgram...');
             this.setupDeepgramConnection();
           }, 2000);
         }
@@ -65,7 +60,7 @@ export class DeepgramService extends EventEmitter {
         // Only process if it's a final result and different from the last processed transcript
         if (transcript && isFinal && transcript !== this.lastProcessedTranscript) {
           // Print the transcribed text
-          console.log('\n🎤 Deepgram Transcription:', transcript);
+          console.log('\n🎤 DEEPGRAM: Transcription:', transcript);
           
           // Update the last processed transcript
           this.lastProcessedTranscript = transcript;
@@ -75,11 +70,11 @@ export class DeepgramService extends EventEmitter {
       });
 
       this.connection.on(LiveTranscriptionEvents.Metadata, (data: any) => {
-        console.log('Metadata received:', JSON.stringify(data, null, 2));
+        console.log('DEEPGRAM: Metadata received.');
       });
 
       this.connection.on(LiveTranscriptionEvents.Error, (error: any) => {
-        console.error('Error in Deepgram connection:', {
+        console.error('DEEPGRAM: Error in Deepgram connection:', {
           message: error.message,
           code: error.code,
           stack: error.stack,
@@ -88,16 +83,16 @@ export class DeepgramService extends EventEmitter {
 
         if (this.shouldReconnect) {
           setTimeout(() => {
-            console.log('Attempting to reconnect to Deepgram after error...');
+            console.log('DEEPGRAM: Attempting to reconnect to Deepgram after error...');
             this.setupDeepgramConnection();
           }, 2000);
         }
       });
     } catch (error) {
-      console.error('Error setting up Deepgram connection:', error);
+      console.error('DEEPGRAM: Error setting up Deepgram connection:', error);
       if (this.shouldReconnect) {
         setTimeout(() => {
-          console.log('Attempting to reconnect to Deepgram after setup error...');
+          console.log('DEEPGRAM: Attempting to reconnect to Deepgram after setup error...');
           this.setupDeepgramConnection();
         }, 2000);
       }
@@ -118,14 +113,14 @@ export class DeepgramService extends EventEmitter {
           break;
         case 'start':
           this.streamSid = data.start.streamSid;
-          console.log('Incoming stream has started', this.streamSid);
+          console.log('DEEPGRAM: Incoming stream has started', this.streamSid);
           break;
         default:
-          console.log('Received non-media event:', data.event);
+          console.log('DEEPGRAM: Received non-media event:', data.event);
           break;
       }
     } catch (error) {
-      console.error('Error handling message:', error);
+      console.error('DEEPGRAM: Error handling message:', error);
     }
   }
 
@@ -134,7 +129,7 @@ export class DeepgramService extends EventEmitter {
     this.shouldReconnect = false;
     
     if (this.connection) {
-      console.log('Manually disconnecting Deepgram service...');
+      console.log('DEEPGRAM: Manually disconnecting Deepgram service...');
       this.connection.finish();
       this.connection = null;
     }
