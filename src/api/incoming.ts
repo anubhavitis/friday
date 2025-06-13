@@ -6,6 +6,7 @@ export const IncomingHandler = {
     const connect = response.connect();
     connect.stream({ url: `wss://${process.env.SERVER}/media-stream` });
 
+    console.log("IncomingHandler: GET, returning response", response.toString());
     return new Response(response.toString(), {
       headers: {
         "Content-Type": "text/xml",

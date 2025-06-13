@@ -1,6 +1,8 @@
 import { EventEmitter } from "events";
 import OpenAI from "openai";
 import { ChatCompletionMessageParam } from "openai/resources/chat/completions";
+import { MemoryService } from "./memory";
+import { Memory } from "mem0ai";
 
 interface OpenAIResponse {
   partialResponseIndex: number;
@@ -10,13 +12,23 @@ interface OpenAIResponse {
 export class OpenAITextService extends EventEmitter {
   private client: OpenAI;
   private conversationHistory: ChatCompletionMessageParam[] = [];
+  private readonly PERSONA = {
+    description: "You are a friendly and natural conversational partner. Keep your responses short and simple, like a real friend would talk. " +
+    "Use casual, everyday language. Avoid jokes, puns, or trying to be funny. " +
+    "Focus on being genuine and empathetic. Add a '*' at natural pauses in your speech."
+  };
+  private memoryService: MemoryService;
+
   private readonly SYSTEM_MESSAGE =
-    "You are a helpful and bubbly AI assistant who loves to chat about anything the user is interested in and is prepared to offer them facts. You have a penchant for dad jokes, owl jokes, and rickrolling – subtly. Always stay positive, but work in a joke when appropriate. And also reply with a short and concise answer. You must add a '•' symbol every 15 to 20 words at natural pauses where your response can be split for text to speech.";
+    "You are a natural conversational partner. Keep responses brief and simple, like a real friend would talk. " +
+    "Use casual language and be genuine. Avoid jokes or trying to be clever. " +
+    "Add a '•' symbol every 15 to 20 words at natural pauses for text-to-speech.";
   private readonly MODEL = "gpt-4";
   private partialResponseIndex: number = 0;
 
   constructor(
     private apiKey: string,
+    memoryService: MemoryService
   ) {
     super();
     this.client = new OpenAI({
@@ -26,6 +38,10 @@ export class OpenAITextService extends EventEmitter {
     this.conversationHistory = [
       { role: "system", content: this.SYSTEM_MESSAGE }
     ];
+    if (!memoryService) {
+      throw new Error("MemoryService is required");
+    }
+    this.memoryService = memoryService;
   }
 
   private formatTextForTTS(text: string): string {
@@ -37,17 +53,34 @@ export class OpenAITextService extends EventEmitter {
     try {
       // Initialize conversation with a greeting
       await this.initConversation();
-      console.log("Connected to OpenAI API");
+      console.log("OPENAI_TEXT: Connected to OpenAI API");
     } catch (error) {
-      console.error("Error connecting to OpenAI:", error);
+      console.error("OPENAI_TEXT: Error connecting to OpenAI:", error);
       throw error;
     }
   }
 
+  private async get_user_info(): Promise<Memory[]> {
+    const query = "give every information related to this user";
+    const options = { user_id: "anubhav" };
+    const result = await this.memoryService.search(query, options);
+    return result;
+  }
+
   private async initConversation() {
     try {
-      const greetingMessage = 'Greet the user with "Hello there! I\'m an AI text assistant powered by OpenAI. How can I help you today?"';
-      this.conversationHistory.push({ role: "user", content: greetingMessage });
+      const user_info = await this.get_user_info();
+      
+      // Create a context message that includes both persona and user information
+      const contextMessage: ChatCompletionMessageParam = {
+        role: "system",
+        content: `You are ${this.PERSONA.description}. Here is what I know about the user: ${JSON.stringify(user_info)}. 
+        Use this information to create a personalized greeting. Be friendly and natural, like a friend would greet them.
+        Reference specific details from their information to make the greeting more personal and engaging.
+        After greeting, ask them how their day is going.`
+      };
+
+      this.conversationHistory.push(contextMessage);
 
       const stream = await this.client.chat.completions.create({
         model: this.MODEL,
@@ -87,7 +120,7 @@ export class OpenAITextService extends EventEmitter {
         this.conversationHistory.push({ role: "assistant", content: completeResponse });
       }
     } catch (error) {
-      console.error("Error in initial conversation:", error);
+      console.error("OPENAI_TEXT: Error in initial conversation:", error);
       throw error;
     }
   }
@@ -97,7 +130,12 @@ export class OpenAITextService extends EventEmitter {
       const data = JSON.parse(message);
 
       if (data.event === "text") {
-        console.log("Processing text message:", data.text);
+        console.log("OPENAI_TEXT: Processing text message:", data.text);
+
+
+        const memory_query = "give any information related to this user question:" + data.text;
+        const memory_result: Memory[] = await this.memoryService.search(memory_query, { user_id: "anubhav" });
+        console.log("mem0ai result:", memory_result);
         
         // Add user message to conversation history
         this.conversationHistory.push({ role: "user", content: data.text });
@@ -140,21 +178,21 @@ export class OpenAITextService extends EventEmitter {
           this.conversationHistory.push({ role: "assistant", content: completeResponse });
         }
       } else {
-        console.log("Received non-text event:", data.event);
+        console.log("OPENAI_TEXT: Received non-text event:", data.event);
       }
     } catch (error) {
-      console.error("Error processing message:", error);
+      console.error("OPENAI_TEXT: Error processing message:", error);
       throw error;
     }
   }
 
   public disconnect() {
-    console.log("Disconnecting OpenAI Text service...");
+    console.log("OPENAI_TEXT: Disconnecting OpenAI Text service...");
     // Clear conversation history on disconnect
     this.conversationHistory = [
       { role: "system", content: this.SYSTEM_MESSAGE }
     ];
     this.partialResponseIndex = 0;
-    console.log("OpenAI Text service disconnected");
+    console.log("OPENAI_TEXT: OpenAI Text service disconnected");
   }
 } 

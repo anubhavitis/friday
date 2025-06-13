@@ -25,20 +25,20 @@ export class TextToSpeechService extends EventEmitter {
   public async convertToSpeech(text: string, index: number) {
     try {
       if (!this.streamSid) {
-        console.warn('No streamSid set, cannot send audio response');
+        console.warn('TTS: No streamSid set, cannot send audio response');
         return;
       }
 
       // Add to queue
       this.responseQueue.push({ text, index });
-      console.log(`📝 Added response ${index} to queue. Queue length: ${this.responseQueue.length}`);
+      console.log(`TTS: Added response ${index} to queue. Queue length: ${this.responseQueue.length}`);
 
       // Start processing if not already processing
       if (!this.isProcessing) {
         await this.processQueue();
       }
     } catch (error) {
-      console.error('Error queueing text-to-speech conversion:', error);
+      console.error('TTS: Error queueing text-to-speech conversion:', error);
       throw error;
     }
   }
@@ -91,13 +91,13 @@ export class TextToSpeechService extends EventEmitter {
             base64Audio
           });
 
-          console.log(`🎵 Text-to-Speech conversion completed for chunk ${this.currentIndex}`);
+          console.log(`TTS: Text-to-Speech conversion completed for chunk ${this.currentIndex}`);
           this.currentIndex++;
         } else {
-          console.error('Error generating audio: No stream received');
+          console.error('TTS: Error generating audio: No stream received');
         }
       } catch (error) {
-        console.error(`Error processing text-to-speech for chunk ${this.currentIndex}:`, error);
+        console.error(`TTS: Error processing text-to-speech for chunk ${this.currentIndex}:`, error);
         // Continue with next chunk even if this one failed
         this.currentIndex++;
       }
@@ -107,7 +107,7 @@ export class TextToSpeechService extends EventEmitter {
   }
 
   public setStreamSid(streamSid: string) {
-    console.log('🔊 Setting streamSid:', streamSid);
+    console.log('TTS: Setting streamSid:', streamSid);
     this.streamSid = streamSid;
   }
 
