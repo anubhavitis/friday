@@ -1,6 +1,8 @@
 import { EventEmitter } from "events";
 import OpenAI from "openai";
 import { ChatCompletionMessageParam } from "openai/resources/chat/completions";
+import { MemoryService } from "./memory";
+import { Memory } from "mem0ai";
 
 interface OpenAIResponse {
   partialResponseIndex: number;
@@ -11,18 +13,22 @@ export class OpenAITextService extends EventEmitter {
   private client: OpenAI;
   private conversationHistory: ChatCompletionMessageParam[] = [];
   private readonly PERSONA = {
-            description: "You are a virtual AI assistant, similar to Jarvis from Marvel's IronMan. Your personality is friendly and straightforward, making conversations enjoyable. " +
-            "Respond in a concise manner, using a maximum of 2 sentences for each response. Avoid lengthy explanations and stick to simple, direct answers. " +
-            "Make sure to stay on topic and keep communications clear and straightforward. You don't sugarcoat your answers, you are straightforward and to the point. Also, add a '*' whereever you want to give natural pauses as your response is being read out loud."
-        };
+    description: "You are a friendly and natural conversational partner. Keep your responses short and simple, like a real friend would talk. " +
+    "Use casual, everyday language. Avoid jokes, puns, or trying to be funny. " +
+    "Focus on being genuine and empathetic. Add a '*' at natural pauses in your speech."
+  };
+  private memoryService: MemoryService;
 
   private readonly SYSTEM_MESSAGE =
-    "You are a helpful and bubbly AI assistant who loves to chat about anything the user is interested in and is prepared to offer them facts. You have a penchant for dad jokes, owl jokes, and rickrolling – subtly. Always stay positive, but work in a joke when appropriate. And also reply with a short and concise answer. You must add a '•' symbol every 15 to 20 words at natural pauses where your response can be split for text to speech.";
+    "You are a natural conversational partner. Keep responses brief and simple, like a real friend would talk. " +
+    "Use casual language and be genuine. Avoid jokes or trying to be clever. " +
+    "Add a '•' symbol every 15 to 20 words at natural pauses for text-to-speech.";
   private readonly MODEL = "gpt-4";
   private partialResponseIndex: number = 0;
 
   constructor(
     private apiKey: string,
+    memoryService: MemoryService
   ) {
     super();
     this.client = new OpenAI({
@@ -32,6 +38,10 @@ export class OpenAITextService extends EventEmitter {
     this.conversationHistory = [
       { role: "system", content: this.SYSTEM_MESSAGE }
     ];
+    if (!memoryService) {
+      throw new Error("MemoryService is required");
+    }
+    this.memoryService = memoryService;
   }
 
   private formatTextForTTS(text: string): string {
@@ -50,10 +60,27 @@ export class OpenAITextService extends EventEmitter {
     }
   }
 
+  private async get_user_info(): Promise<Memory[]> {
+    const query = "give every information related to this user";
+    const options = { user_id: "anubhav" };
+    const result = await this.memoryService.search(query, options);
+    return result;
+  }
+
   private async initConversation() {
     try {
-      const greetingMessage = 'Here is your persona: ' + this.PERSONA.description + '. Greet user as per your persona, and ask them how is their day going."';
-      this.conversationHistory.push({ role: "user", content: greetingMessage });
+      const user_info = await this.get_user_info();
+      
+      // Create a context message that includes both persona and user information
+      const contextMessage: ChatCompletionMessageParam = {
+        role: "system",
+        content: `You are ${this.PERSONA.description}. Here is what I know about the user: ${JSON.stringify(user_info)}. 
+        Use this information to create a personalized greeting. Be friendly and natural, like a friend would greet them.
+        Reference specific details from their information to make the greeting more personal and engaging.
+        After greeting, ask them how their day is going.`
+      };
+
+      this.conversationHistory.push(contextMessage);
 
       const stream = await this.client.chat.completions.create({
         model: this.MODEL,

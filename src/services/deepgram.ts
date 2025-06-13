@@ -1,17 +1,21 @@
 import { createClient, LiveTranscriptionEvents } from '@deepgram/sdk';
-import { ServerWebSocket } from 'bun';
-import { OpenAITextService } from './openAiText';
 import { EventEmitter } from 'events';
+import { MemoryService } from './memory';
+import { Memory } from 'mem0ai';
+
 export class DeepgramService extends EventEmitter {
   private connection: any = null;
   private streamSid: string | null = null;
   private lastProcessedTranscript: string | null = null;
   private shouldReconnect: boolean = true;
+  private memoryService: MemoryService;
 
   constructor(
     private apiKey: string,
+    memoryService: MemoryService
   ) {
     super();
+    this.memoryService = memoryService;
     if (!apiKey) {
       console.error('DEEPGRAM: API key is missing or invalid');
     }
@@ -61,6 +65,10 @@ export class DeepgramService extends EventEmitter {
         if (transcript && isFinal && transcript !== this.lastProcessedTranscript) {
           // Print the transcribed text
           console.log('\n🎤 DEEPGRAM: Transcription:', transcript);
+
+          const memory_query = "give any information related to this user question:" + transcript;
+          const memory_result: Memory[] = await this.memoryService.search(memory_query, { user_id: "anubhav" });
+          console.log("mem0ai result:", memory_result);
           
           // Update the last processed transcript
           this.lastProcessedTranscript = transcript;

@@ -5,6 +5,9 @@ import { DeepgramService } from "./src/services/deepgram";
 import { TextToSpeechService } from "./src/services/textToSpeech";
 import { IncomingHandler } from "./src/api/incoming";
 
+import MemoryClient, { Message } from 'mem0ai';
+import { MemoryService } from "./src/services/memory";
+
 const {
   TWILIO_ACCOUNT_SID,
   TWILIO_AUTH_TOKEN,
@@ -12,14 +15,17 @@ const {
   SERVER,
   OPENAI_API_KEY,
   DEEPGRAM_API_KEY,
+  MEM0_API_KEY
 } = process.env;
 
-if (!TWILIO_ACCOUNT_SID || !TWILIO_AUTH_TOKEN || !FROM_NUMBER || !SERVER || !OPENAI_API_KEY || !DEEPGRAM_API_KEY) {
+if (!TWILIO_ACCOUNT_SID || !TWILIO_AUTH_TOKEN || !FROM_NUMBER || !SERVER || !OPENAI_API_KEY || !DEEPGRAM_API_KEY || !MEM0_API_KEY) {
   console.error(
     "APP: One or more environment variables are missing. Please ensure TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, PHONE_NUMBER_FROM, DOMAIN, OPENAI_API_KEY, and DEEPGRAM_API_KEY are set."
   );
   process.exit(1);
 }
+
+const memoryService = new MemoryService(MEM0_API_KEY);
 
 let openAiTextService: OpenAITextService | null = null;
 let deepgramService: DeepgramService | null = null;
@@ -57,11 +63,11 @@ const server: Serve = {
       textToSpeechService.connect();
       console.log('APP: Text-to-Speech service connected');
 
-      openAiTextService = new OpenAITextService(OPENAI_API_KEY);
+      openAiTextService = new OpenAITextService(OPENAI_API_KEY, memoryService);
       openAiTextService.connect();
       console.log('APP: OpenAI Text service connected');
 
-      deepgramService = new DeepgramService(DEEPGRAM_API_KEY);
+      deepgramService = new DeepgramService(DEEPGRAM_API_KEY, memoryService);
       deepgramService.connect();
       console.log('APP: Deepgram service connected');
 
