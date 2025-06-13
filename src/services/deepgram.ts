@@ -1,12 +1,15 @@
 import { createClient, LiveTranscriptionEvents } from '@deepgram/sdk';
-import { ServerWebSocket } from 'bun';
-import { OpenAITextService } from './openAiText';
 import { EventEmitter } from 'events';
+
 export class DeepgramService extends EventEmitter {
   private connection: any = null;
   private streamSid: string | null = null;
-  private lastProcessedTranscript: string | null = null;
   private shouldReconnect: boolean = true;
+  private finalResult: string = '';
+  private isUserSpeaking: boolean = false;
+  private silenceThreshold: number = 1000; // 1 second of silence to consider speech ended
+  private lastSpeechTime: number = 0;
+  private utteranceTimeout: NodeJS.Timeout | null = null;
 
   constructor(
     private apiKey: string,
@@ -23,10 +26,8 @@ export class DeepgramService extends EventEmitter {
 
   private setupDeepgramConnection() {
     try {
-      // Create a Deepgram client using the API key
       const deepgram = createClient(this.apiKey);
 
-      // Create a live transcription connection
       this.connection = deepgram.listen.live({
         encoding: 'mulaw',
         sample_rate: 8000,
@@ -34,10 +35,10 @@ export class DeepgramService extends EventEmitter {
         punctuate: true,
         interim_results: true,
         endpointing: 200,
-        utterance_end_ms: 1000
+        utterance_end_ms: 1000,
+        vad_events: true // Enable Voice Activity Detection events
       });
-
-      // Set up event listeners
+      
       this.connection.on(LiveTranscriptionEvents.Open, () => {
         console.log('Connected to Deepgram WebSocket');
       });
@@ -58,19 +59,78 @@ export class DeepgramService extends EventEmitter {
         }
       });
 
-      this.connection.on(LiveTranscriptionEvents.Transcript, async (data: any) => {
-        const transcript = data.channel.alternatives[0].transcript;
-        const isFinal = data.is_final;
+      this.connection.on(LiveTranscriptionEvents.Transcript, (data: any) => {
+        const alternatives = data.channel?.alternatives;
+        let text = '';
+        if (alternatives) {
+          text = alternatives[0]?.transcript;
+        }
 
-        // Only process if it's a final result and different from the last processed transcript
-        if (transcript && isFinal && transcript !== this.lastProcessedTranscript) {
-          // Print the transcribed text
-          console.log('\n🎤 Deepgram Transcription:', transcript);
+        // Clear any existing utterance timeout
+        if (this.utteranceTimeout) {
+          clearTimeout(this.utteranceTimeout);
+          this.utteranceTimeout = null;
+        }
+
+        // Handle UtteranceEnd event
+        if (data.type === 'UtteranceEnd') {
+          console.log('UtteranceEnd received');
+          if (this.finalResult.trim().length > 0) {
+            console.log('Emitting final transcription:', this.finalResult);
+            this.emit('transcription', this.finalResult);
+            this.finalResult = '';
+          }
+          this.isUserSpeaking = false;
+          return;
+        }
+
+        // Handle final transcriptions
+        if (data.is_final === true && text.trim().length > 0) {
+          console.log('Final transcription received:', text);
+          this.finalResult += ` ${text}`;
+          this.lastSpeechTime = Date.now();
           
-          // Update the last processed transcript
-          this.lastProcessedTranscript = transcript;
+          if (data.speech_final === true) {
+            console.log('Speech final received, emitting transcription');
+            this.emit('transcription', this.finalResult);
+            this.finalResult = '';
+            this.isUserSpeaking = false;
+          }
+        } else if (text.trim().length > 0) {
+          // Handle interim results
+          this.lastSpeechTime = Date.now();
           
-          this.emit('deepgram_transcript_received', transcript);
+          // If this is the first utterance after silence, emit user_speaking event
+          if (!this.isUserSpeaking) {
+            this.isUserSpeaking = true;
+            this.emit('user_speaking', true);
+          }
+          
+          this.emit('utterance', text);
+
+          // Set a timeout to emit the transcription if we don't get a final result
+          this.utteranceTimeout = setTimeout(() => {
+            if (this.finalResult.trim().length > 0) {
+              console.log('Emitting transcription after timeout:', this.finalResult);
+              this.emit('transcription', this.finalResult);
+              this.finalResult = '';
+              this.isUserSpeaking = false;
+            }
+          }, 2000); // Wait 2 seconds after last utterance
+        } else {
+          // Check for silence
+          const timeSinceLastSpeech = Date.now() - this.lastSpeechTime;
+          if (this.isUserSpeaking && timeSinceLastSpeech > this.silenceThreshold) {
+            this.isUserSpeaking = false;
+            this.emit('user_speaking', false);
+            
+            // If we have accumulated text, emit it as transcription
+            if (this.finalResult.trim().length > 0) {
+              console.log('Emitting transcription after silence:', this.finalResult);
+              this.emit('transcription', this.finalResult);
+              this.finalResult = '';
+            }
+          }
         }
       });
 
@@ -130,7 +190,6 @@ export class DeepgramService extends EventEmitter {
   }
 
   public disconnect() {
-    // Set shouldReconnect to false to prevent reconnection attempts
     this.shouldReconnect = false;
     
     if (this.connection) {
@@ -138,7 +197,13 @@ export class DeepgramService extends EventEmitter {
       this.connection.finish();
       this.connection = null;
     }
+    if (this.utteranceTimeout) {
+      clearTimeout(this.utteranceTimeout);
+      this.utteranceTimeout = null;
+    }
     this.streamSid = null;
-    this.lastProcessedTranscript = null;
+    this.finalResult = '';
+    this.isUserSpeaking = false;
+    this.lastSpeechTime = 0;
   }
 }
