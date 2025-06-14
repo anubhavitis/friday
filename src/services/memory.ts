@@ -1,31 +1,41 @@
-import MemoryClient, { Message, MemoryOptions } from "mem0ai";
+import MemoryClient, { Message } from "mem0ai";
 
 export class MemoryService {
-
+    private user_id: string | null = null;
     private client: MemoryClient;
     
   constructor(private apiKey: string) {
       this.client = new MemoryClient({ apiKey: this.apiKey });
-      const messages: Message[] = [
-          {
-              role: "user", content: "Hi, I'm Anubhav. I'm a 25yo vegetarian male. I am Software Enginner by profession. I have a passion for music and love to play guitar." },
-      ]
-      this.add(messages, { user_id: "anubhav" }).then(_ => console.log("added inital memory for anubhav"));
   }
     
-    public async add(messages: Message[], options: MemoryOptions) {
+    public init_user(userId: string) {
+        this.user_id = userId;
+    }
+    
+    public async add(messages: Message[]) {
+        if (!this.user_id) {
+            throw new Error("MemoryService not initialized");
+        }
+        const options = { user_id: this.user_id };
       const result = await this.client.add(messages, options)
         return result;
     }
     
-    public async greetings(user_id: string) {
+    public async greetings() {
+        if (!this.user_id) {
+            throw new Error("MemoryService not initialized");
+        }
         const query = "ask user how is their day going";
-        const options = { user_id: user_id };
+        const options = { user_id: this.user_id };
         const result = await this.client.search(query, options);
         return result;
     }
 
-    public async search(query: string, options: MemoryOptions) {
+    public async search(query: string) {
+        if (!this.user_id) {
+            throw new Error("MemoryService not initialized");
+        }
+        const options = { user_id: this.user_id };
         const result = await this.client.search(query, options);
         return result;
     }

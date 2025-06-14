@@ -52,8 +52,7 @@ export class OpenAITextService extends EventEmitter {
 
   private async get_user_info(): Promise<Memory[]> {
     const query = "give every information related to this user";
-    const options = { user_id: "anubhav" };
-    const result = await this.memoryService.search(query, options);
+    const result = await this.memoryService.search(query);
     return result;
   }
 
@@ -124,7 +123,7 @@ export class OpenAITextService extends EventEmitter {
 
 
         const memory_query = "give any information related to this user question:" + data.text;
-        const memory_result: Memory[] = await this.memoryService.search(memory_query, { user_id: "anubhav" });
+        const memory_result: Memory[] = await this.memoryService.search(memory_query);
         console.log("mem0ai result:", memory_result);
         
         // Add user message to conversation history
