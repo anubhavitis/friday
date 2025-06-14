@@ -5,8 +5,9 @@ import { DeepgramService } from "./src/services/deepgram";
 import { TextToSpeechService } from "./src/services/textToSpeech";
 import { IncomingHandler } from "./src/api/incoming";
 
-import MemoryClient, { Message } from 'mem0ai';
 import { MemoryService } from "./src/services/memory";
+import { Twilio } from "twilio";
+import yaml from 'js-yaml';
 
 const {
   TWILIO_ACCOUNT_SID,
@@ -25,8 +26,19 @@ if (!TWILIO_ACCOUNT_SID || !TWILIO_AUTH_TOKEN || !FROM_NUMBER || !SERVER || !OPE
   process.exit(1);
 }
 
-const memoryService = new MemoryService(MEM0_API_KEY);
+interface Config {
+  users: {
+    [key: string]: string;
+  }
+}
 
+const configFile = Bun.file("config.yaml");
+const configContent = await configFile.text();
+const config: Config = yaml.load(configContent) as Config;
+console.log("APP: Config:", config);
+
+const twilioClient = new Twilio(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN);
+let memoryService: MemoryService | null = null;
 let openAiTextService: OpenAITextService | null = null;
 let deepgramService: DeepgramService | null = null;
 let textToSpeechService: TextToSpeechService | null = null;
@@ -58,6 +70,8 @@ const server: Serve = {
   websocket: {
     open: (ws: ServerWebSocket<undefined>) => {
       console.log("APP: Connected to Server WebSocket");
+
+      memoryService = new MemoryService(MEM0_API_KEY);
       
       // Initialize services in the correct order with dependencies
       textToSpeechService = new TextToSpeechService(DEEPGRAM_API_KEY);
@@ -65,8 +79,7 @@ const server: Serve = {
       console.log('APP: Text-to-Speech service connected');
 
       openAiTextService = new OpenAITextService(OPENAI_API_KEY, memoryService);
-      openAiTextService.connect();
-      console.log('APP: OpenAI Text service connected');
+
 
       deepgramService = new DeepgramService(DEEPGRAM_API_KEY);
       deepgramService.connect();
@@ -116,7 +129,6 @@ const server: Serve = {
     message: async (ws: ServerWebSocket<undefined>, message: string) => {
       try {
         const data = JSON.parse(message);
-
         // Handle media events from Twilio
         if (data.event === 'media') {
           // Send audio to Deepgram for speech-to-text
@@ -124,7 +136,20 @@ const server: Serve = {
         }
         // Handle start event to set streamSid
         else if (data.event === 'start') {
-          console.log('APP: Start event received, streamSid:', data?.streamSid);
+          const { callSid } = data.start;
+          const call = await twilioClient.calls(callSid).fetch();
+          const { from, to } = call;
+          console.log("APP: Call details:", { from, to });
+          console.log("APP: Config:", config.users);
+          const user_id = config.users[to];
+          if (user_id) {
+            console.log(`MemoryService: Initializing user ${user_id}`);
+            memoryService?.init_user(user_id);
+            openAiTextService?.connect();
+            console.log('APP: OpenAI Text service connected');
+          } else {
+            throw new Error(`APP: No user_id found in config for number: ${to}`);
+          }
           const streamSid = data.start?.streamSid;
           if (streamSid) {
             textToSpeechService?.setStreamSid(streamSid);
