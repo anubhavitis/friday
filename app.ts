@@ -5,8 +5,8 @@ import { DeepgramService } from "./src/services/deepgram";
 import { TextToSpeechService } from "./src/services/textToSpeech";
 import { IncomingHandler } from "./src/api/incoming";
 
-import MemoryClient, { Message } from 'mem0ai';
 import { MemoryService } from "./src/services/memory";
+import { Twilio } from "twilio";
 
 const {
   TWILIO_ACCOUNT_SID,
@@ -27,6 +27,7 @@ if (!TWILIO_ACCOUNT_SID || !TWILIO_AUTH_TOKEN || !FROM_NUMBER || !SERVER || !OPE
 
 const memoryService = new MemoryService(MEM0_API_KEY);
 
+const twilioClient = new Twilio(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN);
 let openAiTextService: OpenAITextService | null = null;
 let deepgramService: DeepgramService | null = null;
 let textToSpeechService: TextToSpeechService | null = null;
@@ -116,7 +117,6 @@ const server: Serve = {
     message: async (ws: ServerWebSocket<undefined>, message: string) => {
       try {
         const data = JSON.parse(message);
-
         // Handle media events from Twilio
         if (data.event === 'media') {
           // Send audio to Deepgram for speech-to-text
@@ -124,7 +124,10 @@ const server: Serve = {
         }
         // Handle start event to set streamSid
         else if (data.event === 'start') {
-          console.log('APP: Start event received, streamSid:', data?.streamSid);
+          const { callSid } = data.start;
+          const call = await twilioClient.calls(callSid).fetch();
+          const { from, to } = call;
+          console.log("APP: Call details:", { from, to });
           const streamSid = data.start?.streamSid;
           if (streamSid) {
             textToSpeechService?.setStreamSid(streamSid);

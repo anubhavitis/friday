@@ -3,6 +3,7 @@ import OpenAI from "openai";
 import { ChatCompletionMessageParam } from "openai/resources/chat/completions";
 import { MemoryService } from "./memory";
 import { Memory } from "mem0ai";
+import fs from "fs";
 
 interface OpenAIResponse {
   partialResponseIndex: number;
@@ -12,17 +13,8 @@ interface OpenAIResponse {
 export class OpenAITextService extends EventEmitter {
   private client: OpenAI;
   private conversationHistory: ChatCompletionMessageParam[] = [];
-  private readonly PERSONA = {
-    description: "You are a friendly and natural conversational partner. Keep your responses short and simple, like a real friend would talk. " +
-    "Use casual, everyday language. Avoid jokes, puns, or trying to be funny. " +
-    "Focus on being genuine and empathetic. Add a '*' at natural pauses in your speech."
-  };
+  private PERSONA: string;
   private memoryService: MemoryService;
-
-  private readonly SYSTEM_MESSAGE =
-    "You are a natural conversational partner. Keep responses brief and simple, like a real friend would talk. " +
-    "Use casual language and be genuine. Avoid jokes or trying to be clever. " +
-    "Add a '•' symbol every 15 to 20 words at natural pauses for text-to-speech.";
   private readonly MODEL = "gpt-4";
   private partialResponseIndex: number = 0;
 
@@ -34,14 +26,12 @@ export class OpenAITextService extends EventEmitter {
     this.client = new OpenAI({
       apiKey: this.apiKey,
     });
-    // Initialize conversation history with system message
-    this.conversationHistory = [
-      { role: "system", content: this.SYSTEM_MESSAGE }
-    ];
+
     if (!memoryService) {
       throw new Error("MemoryService is required");
     }
     this.memoryService = memoryService;
+    this.PERSONA = fs.readFileSync('src/services/aiPersona.txt', 'utf8');
   }
 
   private formatTextForTTS(text: string): string {
@@ -74,7 +64,7 @@ export class OpenAITextService extends EventEmitter {
       // Create a context message that includes both persona and user information
       const contextMessage: ChatCompletionMessageParam = {
         role: "system",
-        content: `You are ${this.PERSONA.description}. Here is what I know about the user: ${JSON.stringify(user_info)}. 
+        content: `You are ${this.PERSONA}. Here is what I know about the user: ${JSON.stringify(user_info)}. 
         Use this information to create a personalized greeting. Be friendly and natural, like a friend would greet them.
         Reference specific details from their information to make the greeting more personal and engaging.
         After greeting, ask them how their day is going.`
@@ -188,10 +178,7 @@ export class OpenAITextService extends EventEmitter {
 
   public disconnect() {
     console.log("OPENAI_TEXT: Disconnecting OpenAI Text service...");
-    // Clear conversation history on disconnect
-    this.conversationHistory = [
-      { role: "system", content: this.SYSTEM_MESSAGE }
-    ];
+    this.conversationHistory = []; // clear conversation history
     this.partialResponseIndex = 0;
     console.log("OPENAI_TEXT: OpenAI Text service disconnected");
   }

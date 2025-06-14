@@ -7,10 +7,9 @@ export class MemoryService {
   constructor(private apiKey: string) {
       this.client = new MemoryClient({ apiKey: this.apiKey });
       const messages: Message[] = [
-  { role: "user", content: "Hi, I'm Anubhav. I'm a 25yo vegetarian currently living in Bangalore. I have ." },
-  { role: "assistant", content: "Hello Alex! I've noted that you're a vegetarian and have a nut allergy. I'll keep this in mind for any food-related recommendations or discussions." }
+          {
+              role: "user", content: "Hi, I'm Anubhav. I'm a 25yo vegetarian male. I am Software Enginner by profession. I have a passion for music and love to play guitar." },
       ]
-      
       this.add(messages, { user_id: "anubhav" }).then(_ => console.log("added inital memory for anubhav"));
   }
     
