@@ -9,6 +9,7 @@ import { UsersHandler } from "./src/api/users";
 import { MemoryService } from "./src/services/memory";
 import { Twilio } from "twilio";
 import yaml from 'js-yaml';
+import { findUserByPhoneNumber } from "./src/repository/users";
 
 const {
   TWILIO_ACCOUNT_SID,
@@ -149,10 +150,11 @@ const server: Serve = {
           const { from, to } = call;
           console.log("APP: Call details:", { from, to });
           console.log("APP: Config:", config.users);
-          const user_id = config.users[to];
-          if (user_id) {
-            console.log(`MemoryService: Initializing user ${user_id}`);
-            memoryService?.init_user(user_id);
+          const user = await findUserByPhoneNumber(to);
+          console.log("APP: User:", JSON.stringify(user));
+          if (user) {
+            console.log(`MemoryService: Initializing user ${user.name}`);
+            memoryService?.init_user(user.name);
             openAiTextService?.connect();
             console.log('APP: OpenAI Text service connected');
           } else {
