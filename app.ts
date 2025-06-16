@@ -4,6 +4,7 @@ import { OpenAITextService } from "./src/services/openAiText";
 import { DeepgramService } from "./src/services/deepgram";
 import { TextToSpeechService } from "./src/services/textToSpeech";
 import { IncomingHandler } from "./src/api/incoming";
+import { UsersHandler } from "./src/api/users";
 
 import { MemoryService } from "./src/services/memory";
 import { Twilio } from "twilio";
@@ -55,6 +56,13 @@ const server: Serve = {
       return HealthHandler.GET(req);
     } else if (pathname === "/voice/incoming") {
       return IncomingHandler.GET(req);
+    } else if (pathname === "/users") {
+      if (req.method === "POST") {
+        return UsersHandler.POST(req);
+      } else if (req.method === "GET") {
+        return UsersHandler.GET(req);
+      }
+      return new Response("Method not allowed", { status: 405 });
     } else if (pathname === "/media-stream") {
       console.log("APP: Media stream request received, host:", req.headers.get("host"));
       if (this.upgrade(req)) {
