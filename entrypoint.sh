@@ -1,6 +1,6 @@
 #!/bin/bash
 echo "Working Directory: $(pwd)"
-echo "Files in schema/:"
+echo "Files in schema/"
 ls -al ./schema
 
 echo "Running db:generate..."
