@@ -6,20 +6,27 @@
   "scripts": {
     "start": "bun run app.ts",
     "dev": "bun --watch app.ts",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "db:generate": "drizzle-kit generate",
+    "db:push": "drizzle-kit push",
+    "db:studio": "drizzle-kit studio"
   },
   "dependencies": {
     "@deepgram/sdk": "^4.4.0",
     "@openai/agents": "^0.0.5",
+    "@types/pg": "^8.15.4",
     "bun-types": "latest",
     "dotenv": "^16.5.0",
+    "drizzle-orm": "^0.44.2",
     "js-yaml": "^4.1.0",
     "mem0ai": "^2.1.30",
     "openai": "^5.3.0",
+    "pg": "^8.16.0",
     "twilio": "^5.7.0"
   },
   "devDependencies": {
     "@types/js-yaml": "^4.0.9",
+    "drizzle-kit": "^0.31.1",
     "typescript": "^5.0.0"
   }
 }
