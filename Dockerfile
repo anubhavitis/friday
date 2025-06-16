@@ -25,4 +25,6 @@ RUN bun run db:push
 EXPOSE 3000
 
 # Start the application
-CMD ["bun", "run", "start"] 
+COPY entrypoint.sh .
+RUN chmod +x ./entrypoint.sh
+CMD ["./entrypoint.sh"]
