@@ -17,9 +17,6 @@ COPY . .
 # Build TypeScript
 RUN bun run typecheck
 
-# Generate and push database migrations
-RUN bun run db:generate
-RUN bun run db:push
 
 # Expose port (adjust if needed)
 EXPOSE 3000
