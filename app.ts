@@ -7,7 +7,9 @@ import { IncomingHandler } from "./src/api/incoming";
 import { EventName } from "./src/enums/eventEmitter";
 import MemoryClient, { Message } from 'mem0ai';
 import { MemoryService } from "./src/services/memory";
-
+import { writeFile } from 'fs/promises';
+import { join } from 'path';
+import { StreamService } from "./src/services/streamService";
 const {
   TWILIO_ACCOUNT_SID,
   TWILIO_AUTH_TOKEN,
@@ -30,8 +32,25 @@ const memoryService = new MemoryService(MEM0_API_KEY);
 let openAiTextService: OpenAITextService | null = null;
 let speechToTextdeepgramService: SpeechToTextDeepgramService | null = null;
 let textToSpeechDeepgramService: TextToSpeechDeepgramService | null = null;
+let streamService: StreamService | null = null;
 let streamSidTwilio: string | null = null;
 const PORT = process.env.PORT || 3000;
+
+// Function to save audio file
+async function saveAudioFile(base64Audio: string, streamSid: string): Promise<void> {
+  try {
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const filename = `tts_${streamSid}_${timestamp}.wav`;
+    const filepath = join(process.cwd(), 'audio_logs', filename);
+    
+    // Convert base64 to buffer and save
+    const audioBuffer = Buffer.from(base64Audio, 'base64');
+    await writeFile(filepath, audioBuffer);
+    console.log(`APP: Saved audio file: ${filename}`);
+  } catch (error) {
+    console.error('APP: Error saving audio file:', error);
+  }
+}
 
 const server: Serve = {
   port: PORT,
@@ -72,6 +91,8 @@ const server: Serve = {
       speechToTextdeepgramService.connect();
       console.log('APP: Deepgram service connected');
 
+      streamService = new StreamService(ws);
+
       // Add event listener for transcript events
       speechToTextdeepgramService.on(EventName.STT_DEEPGRAM_TRANSCRIPTION, (transcript: string) => {
         console.log('📝 Received transcript event:', transcript);
@@ -103,13 +124,21 @@ const server: Serve = {
         textToSpeechDeepgramService?.convertToSpeech(response.partialResponse, response.partialResponseIndex);
       });
 
-      textToSpeechDeepgramService.on(EventName.TTS_DEEPGRAM_DONE, (response: { streamSid: string, base64Audio: string }) => {
+      textToSpeechDeepgramService.on(EventName.TTS_DEEPGRAM_DONE, async (response: { streamSid: string, base64Audio: string, index: number }) => {
         console.log('APP: Text-to-Speech conversion completed');
-        ws.send(JSON.stringify({
-          event: 'media',
-          streamSid: response.streamSid,
-          media: { payload: response.base64Audio }
-        }));
+        
+        // Save the audio file
+        // await saveAudioFile(response.base64Audio, response.streamSid);
+        
+        streamService?.buffer(response.index, response.base64Audio);
+        streamService?.sendAudio(response.base64Audio);
+        streamService?.sendAudio(response.base64Audio);
+        streamService?.sendAudio(response.base64Audio);
+        streamService?.sendAudio(response.base64Audio);
+        streamService?.sendAudio(response.base64Audio);
+        streamService?.sendAudio(response.base64Audio);
+        streamService?.sendAudio(response.base64Audio);
+        streamService?.sendAudio(response.base64Audio);
       });
     },
 
@@ -129,6 +158,7 @@ const server: Serve = {
           if (streamSid) {
             textToSpeechDeepgramService?.setStreamSid(streamSid);
             streamSidTwilio = streamSid;
+            streamService?.setStreamSid(streamSid);
           } else {
             console.warn('APP: No streamSid found in start event');
           }

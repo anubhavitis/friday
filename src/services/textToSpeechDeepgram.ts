@@ -68,7 +68,7 @@ export class TextToSpeechDeepgramService extends EventEmitter {
         const response = await this.deepgram.speak.request(
           { text },
           {
-            model: "aura-2-thalia-en",
+            model: "aura-2-delia-en",
             encoding: "mulaw",
             container: "wav",
             sample_rate: 8000
@@ -88,7 +88,8 @@ export class TextToSpeechDeepgramService extends EventEmitter {
           // Send the audio back to the client with the current streamSid
           this.emit(EventName.TTS_DEEPGRAM_DONE, {
             streamSid: this.streamSid,
-            base64Audio
+            base64Audio,
+            index: this.currentIndex
           });
 
           console.log(`TTS: Text-to-Speech conversion completed for chunk ${this.currentIndex}`);

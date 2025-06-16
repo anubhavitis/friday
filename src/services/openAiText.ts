@@ -63,7 +63,7 @@ export class OpenAITextService extends EventEmitter {
 
   private async get_user_info(): Promise<Memory[]> {
     const query = "give every information related to this user";
-    const options = { user_id: "anubhav" };
+    const options = { user_id: "abhishek" };
     const result = await this.memoryService.search(query, options);
     return result;
   }
@@ -81,6 +81,11 @@ export class OpenAITextService extends EventEmitter {
         After greeting, ask them how their day is going.`
       };
 
+      this.emit(EventName.OPENAI_RESPONSE_DONE, {
+        partialResponseIndex: 0,
+        partialResponse: `You are Hero`
+      });  
+      return;
       this.conversationHistory.push(contextMessage);
 
       const stream = await this.client.chat.completions.create({
@@ -135,7 +140,7 @@ export class OpenAITextService extends EventEmitter {
 
 
         const memory_query = "give any information related to this user question:" + data.text;
-        const memory_result: Memory[] = await this.memoryService.search(memory_query, { user_id: "anubhav" });
+        const memory_result: Memory[] = await this.memoryService.search(memory_query, { user_id: "abhishek" });
         console.log("mem0ai result:", memory_result);
         
         // Add user message to conversation history
