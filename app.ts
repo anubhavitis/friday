@@ -10,7 +10,7 @@ import { MemoryService } from "./src/services/memory";
 import { Twilio } from "twilio";
 import yaml from 'js-yaml';
 import { findUserByPhoneNumber } from "./src/repository/users";
-import { addCallHistory, updateCallHistoryBySid } from "./src/services/callHistory";
+import { addCallHistory, updateCallHistoryBySid } from "./src/repository/callHistory";
 import { OutboundHandler } from "./src/api/outbound";
 
 const {
