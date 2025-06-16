@@ -1,6 +1,8 @@
 import { drizzle } from 'drizzle-orm/node-postgres';
 import { Pool } from 'pg';
-import * as schema from '../schema/users';
+import * as usersSchema from '../schema/users';
+import * as callHistorySchema from '../schema/callHistory';
+import * as schedulerSchema from '../schema/scheduler';
 
 // Database connection configuration
 const pool = new Pool({
@@ -12,8 +14,14 @@ const pool = new Pool({
   ssl: false
 });
 
-// Create Drizzle instance
-export const db = drizzle(pool, { schema });
+// Create Drizzle instance with all schemas
+export const db = drizzle(pool, { 
+  schema: {
+    ...usersSchema,
+    ...callHistorySchema,
+    ...schedulerSchema
+  }
+});
 
 // Export the pool for direct access if needed
 export { pool };
