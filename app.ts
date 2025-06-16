@@ -10,6 +10,8 @@ import { MemoryService } from "./src/services/memory";
 import { Twilio } from "twilio";
 import yaml from 'js-yaml';
 import { findUserByPhoneNumber } from "./src/repository/users";
+import { addCallHistory, updateCallHistoryBySid } from "./src/services/callHistory";
+import { OutboundHandler } from "./src/api/outbound";
 
 const {
   TWILIO_ACCOUNT_SID,
@@ -64,6 +66,8 @@ const server: Serve = {
         return UsersHandler.GET(req);
       }
       return new Response("Method not allowed", { status: 405 });
+    } else if (pathname === "/outbound") {
+      return OutboundHandler.POST(req);
     } else if (pathname === "/media-stream") {
       console.log("APP: Media stream request received, host:", req.headers.get("host"));
       if (this.upgrade(req)) {
@@ -156,6 +160,13 @@ const server: Serve = {
             console.log(`MemoryService: Initializing user ${user.name}`);
             memoryService?.init_user(user.name);
             openAiTextService?.connect();
+            addCallHistory({
+              userId: user.id,
+              callSid: callSid,
+              duration: 0,
+              startAt: new Date(),
+              endAt: new Date(),
+            });
             console.log('APP: OpenAI Text service connected');
           } else {
             throw new Error(`APP: No user_id found in config for number: ${to}`);
@@ -180,6 +191,12 @@ const server: Serve = {
       openAiTextService = null;
       deepgramService = null;
       textToSpeechService = null;
+      if (streamSidTwilio) {
+        updateCallHistoryBySid(streamSidTwilio, {
+          endAt: new Date(),
+        });
+      }
+      streamSidTwilio = null;
       console.log("APP: Client disconnected.");
     },
   },
