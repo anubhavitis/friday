@@ -15,7 +15,7 @@ export class OpenAITextService extends EventEmitter {
   private conversationHistory: ChatCompletionMessageParam[] = [];
   private PERSONA: string;
   private memoryService: MemoryService;
-  private readonly MODEL = "gpt-4";
+  private readonly MODEL = "gpt-4o-mini";
   private partialResponseIndex: number = 0;
 
   constructor(
