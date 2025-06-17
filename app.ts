@@ -8,41 +8,30 @@ import { UsersHandler } from "./src/api/users";
 
 import { MemoryService } from "./src/services/memory";
 import { Twilio } from "twilio";
-import yaml from 'js-yaml';
-import { findUserByPhoneNumber } from "./src/repository/users";
-import { addCallHistory, updateCallHistoryBySid } from "./src/repository/callHistory";
+import { SchedulerService } from "./src/services/scheduler";
+import { CronService } from "./src/services/cron/cron";
+import { initDb } from "./src/pkg/db";
+import { env } from "./src/config/env";
 import { OutboundHandler } from "./src/api/outbound";
+import { CallHistoryService } from "./src/services/callHistory";
+import { UserService } from "./src/services/user";
 
-const {
-  TWILIO_ACCOUNT_SID,
-  TWILIO_AUTH_TOKEN,
-  FROM_NUMBER,
-  SERVER,
-  OPENAI_API_KEY,
-  DEEPGRAM_API_KEY,
-  MEM0_API_KEY
-} = process.env;
-
-if (!TWILIO_ACCOUNT_SID || !TWILIO_AUTH_TOKEN || !FROM_NUMBER || !SERVER || !OPENAI_API_KEY || !DEEPGRAM_API_KEY || !MEM0_API_KEY) {
-  console.error(
-    "APP: One or more environment variables are missing. Please ensure TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, PHONE_NUMBER_FROM, DOMAIN, OPENAI_API_KEY, and DEEPGRAM_API_KEY are set."
-  );
+// Initialize database
+const err = await initDb(env.DB_HOST, Number(env.DB_PORT), env.DB_USER, env.DB_PASSWORD, env.DB_NAME);
+if (err) {
+  console.error('APP: Database connection failed:', err);
   process.exit(1);
 }
 
-interface Config {
-  users: {
-    [key: string]: string;
-  }
-}
+const twilioClient = new Twilio(env.TWILIO_ACCOUNT_SID, env.TWILIO_AUTH_TOKEN);
 
-const configFile = Bun.file("config.yaml");
-const configContent = await configFile.text();
-const config: Config = yaml.load(configContent) as Config;
-console.log("APP: Config:", config);
+const PORT = Number(env.PORT);
 
-const twilioClient = new Twilio(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN);
-const PORT = process.env.PORT || 3000;
+let schedulerService = new SchedulerService(twilioClient, env.FROM_NUMBER);
+let cronService = new CronService(schedulerService);
+let userService = new UserService(twilioClient);
+let callHistoryService = new CallHistoryService(twilioClient);
+cronService.start();
 
 const server: Serve = {
   port: PORT,
@@ -64,7 +53,7 @@ const server: Serve = {
     } else if (pathname === "/outbound") {
       return OutboundHandler.POST(req);
     } else if (pathname === "/media-stream") {
-      console.log("APP: Media stream request received, host:", req);
+      console.log("APP: Media stream request received, host:", req.headers.get("host"));
       if (this.upgrade(req)) {
         console.log("APP: Upgraded to WebSocket");
         return; // WebSocket will take over
@@ -79,13 +68,17 @@ const server: Serve = {
     open: (ws: ServerWebSocket<undefined>) => {
       console.log("APP: Connected to Server WebSocket");
 
-      // Initialize per-connection services
-      const memoryService = new MemoryService(MEM0_API_KEY);
-      const textToSpeechService = new TextToSpeechService(DEEPGRAM_API_KEY);
+      const memoryService = new MemoryService(env.MEM0_API_KEY);
+      
+      // Initialize services in the correct order with dependencies
+      const textToSpeechService = new TextToSpeechService(env.DEEPGRAM_API_KEY);
       textToSpeechService.connect();
       console.log('APP: Text-to-Speech service connected');
-      const openAiTextService = new OpenAITextService(OPENAI_API_KEY, memoryService);
-      const deepgramService = new DeepgramService(DEEPGRAM_API_KEY);
+
+      const openAiTextService = new OpenAITextService(env.OPENAI_API_KEY, memoryService);
+
+
+      const deepgramService = new DeepgramService(env.DEEPGRAM_API_KEY);
       deepgramService.connect();
       console.log('APP: Deepgram service connected');
 
@@ -94,6 +87,7 @@ const server: Serve = {
         textToSpeechService,
         openAiTextService,
         deepgramService,
+        callSidTwilio: null,
         streamSidTwilio: null,
       };
 
@@ -128,11 +122,11 @@ const server: Serve = {
         (ws as any).data.textToSpeechService?.convertToSpeech(response.partialResponse, response.partialResponseIndex);
       });
 
-      textToSpeechService.on('text_to_speech_done', (response: { streamSid: string, base64Audio: string }) => {
+      textToSpeechService.on('text_to_speech_done', (response: { base64Audio: string }) => {
         console.log('APP: Text-to-Speech conversion completed');
         ws.send(JSON.stringify({
           event: 'media',
-          streamSid: response.streamSid,
+          streamSid: (ws as any).data.streamSidTwilio,
           media: { payload: response.base64Audio }
         }));
       });
@@ -148,51 +142,30 @@ const server: Serve = {
         }
         // Handle start event to set streamSid
         else if (data.event === 'start') {
-          console.log('APP: Received start event:', data);
-          const { callSid } = data.start;
-          const call = await twilioClient.calls(callSid).fetch();
-          const { from, to } = call;
-          console.log("APP: Call details:", { from, to });
-          console.log("APP: Config:", config.users);
-          const user = await findUserByPhoneNumber(to);
-          console.log("APP: User:", JSON.stringify(user));
-          if (user) {
-            console.log(`MemoryService: Initializing user ${user.name}`);
-            (ws as any).data.memoryService?.init_user(user.name);
-            (ws as any).data.openAiTextService?.connect();
-            addCallHistory({
-              userId: user.id,
-              callSid: callSid,
-              duration: 0,
-              startAt: new Date(),
-              endAt: new Date(),
-            });
-            console.log('APP: OpenAI Text service connected');
-          } else {
-            throw new Error(`APP: No user_id found in config for number: ${to}`);
-          }
-          const streamSid = data.start?.streamSid;
-          if (streamSid) {
-            (ws as any).data.textToSpeechService?.setStreamSid(streamSid);
-            (ws as any).data.streamSidTwilio = streamSid;
-          } else {
-            console.warn('APP: No streamSid found in start event');
-          }
+          console.log('APP: Received start event');
+          const { callSid, streamSid } = data.start;
+          let user = await userService.getUserByCallSid(callSid);
+          (ws as any).data.memoryService?.init_user(user.name);
+          (ws as any).data.openAiTextService?.connect();
+          (ws as any).data.callSidTwilio = callSid;
+          (ws as any).data.streamSidTwilio = streamSid;
+          await callHistoryService.startCallHistory(callSid, user);
         }
       } catch (error) {
         console.error('APP: Error handling WebSocket message:', error);
       }
     },
 
-    close: (ws: ServerWebSocket<undefined>, code: number, reason: string) => {
+    close: async (ws: ServerWebSocket<undefined>, code: number, reason: string) => {
       (ws as any).data?.openAiTextService?.disconnect();
       (ws as any).data?.deepgramService?.disconnect();
       (ws as any).data?.textToSpeechService?.disconnect();
-      if ((ws as any).data?.streamSidTwilio) {
-        updateCallHistoryBySid((ws as any).data.streamSidTwilio, {
-          endAt: new Date(),
-        });
+      const callSid = (ws as any).data.callSidTwilio;
+      if (!callSid) {
+        console.warn('APP: No callSid found in close event');
+        return;
       }
+      await callHistoryService.endCallHistory(callSid);
       (ws as any).data = undefined;
       console.log("APP: Client disconnected.");
     },

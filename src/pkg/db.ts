@@ -1,27 +1,38 @@
-import { drizzle } from 'drizzle-orm/node-postgres';
-import { Pool } from 'pg';
-import * as usersSchema from '../schema/users';
-import * as callHistorySchema from '../schema/callHistory';
-import * as schedulerSchema from '../schema/scheduler';
+import { drizzle } from "drizzle-orm/node-postgres";
+import { Pool } from "pg";
+import type { NodePgDatabase } from "drizzle-orm/node-postgres";
+import * as usersSchema from "../schema/users";
+import * as callHistorySchema from "../schema/callHistory";
+import * as schedulerSchema from "../schema/scheduler";
 
-// Database connection configuration
-const pool = new Pool({
-  host: process.env.DB_HOST,
-  port: Number(process.env.DB_PORT),
-  user: process.env.DB_USER,
-  password: process.env.DB_PASSWORD,
-  database: process.env.DB_NAME,
-  ssl: false
-});
+let db: NodePgDatabase<typeof usersSchema & typeof callHistorySchema & typeof schedulerSchema>;
 
-// Create Drizzle instance with all schemas
-export const db = drizzle(pool, { 
-  schema: {
-    ...usersSchema,
-    ...callHistorySchema,
-    ...schedulerSchema
+export async function initDb(host: string, port: number, user: string, password: string, database: string): Promise<Error | null> {
+  const pool = new Pool({
+    host,
+    port,
+    user,
+    password,
+    database,
+    ssl: false,
+  });
+
+  db = drizzle(pool, {
+    schema: {
+      ...usersSchema,
+      ...callHistorySchema,
+      ...schedulerSchema,
+    },
+  });
+
+  // check connection
+  try {
+    await db.execute('SELECT 1');
+    console.log('✅ Database connection successful');
+    return null;
+  } catch (error) {
+    return error instanceof Error ? error : new Error('Database connection failed');
   }
-});
+}
 
-// Export the pool for direct access if needed
-export { pool };
+export { db };

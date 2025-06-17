@@ -8,7 +8,6 @@ interface QueuedResponse {
 
 export class TextToSpeechService extends EventEmitter {
   private deepgram: any;
-  private streamSid: string | null = null;
   private responseQueue: QueuedResponse[] = [];
   private isProcessing: boolean = false;
   private currentIndex: number = 0;
@@ -24,10 +23,6 @@ export class TextToSpeechService extends EventEmitter {
 
   public async convertToSpeech(text: string, index: number) {
     try {
-      if (!this.streamSid) {
-        console.warn('TTS: No streamSid set, cannot send audio response');
-        return;
-      }
 
       // Add to queue
       this.responseQueue.push({ text, index });
@@ -85,9 +80,8 @@ export class TextToSpeechService extends EventEmitter {
           // Convert the buffer to base64
           const base64Audio = buffer.toString('base64');
           
-          // Send the audio back to the client with the current streamSid
+          // Send the audio back to the client
           this.emit('text_to_speech_done', {
-            streamSid: this.streamSid,
             base64Audio
           });
 
@@ -104,11 +98,6 @@ export class TextToSpeechService extends EventEmitter {
     }
 
     this.isProcessing = false;
-  }
-
-  public setStreamSid(streamSid: string) {
-    console.log('TTS: Setting streamSid:', streamSid);
-    this.streamSid = streamSid;
   }
 
   private async getAudioBuffer(response: any) {
@@ -130,8 +119,6 @@ export class TextToSpeechService extends EventEmitter {
   }
 
   public disconnect() {
-
-    this.streamSid = null;
     this.responseQueue = [];
     this.isProcessing = false;
     this.currentIndex = 0;
