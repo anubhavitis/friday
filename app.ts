@@ -13,6 +13,8 @@ import { SchedulerService } from "./src/services/scheduler";
 import { CronService } from "./src/services/cron/cron";
 import { initDb } from "./src/pkg/db";
 import { env } from "./src/config/env";
+import { addCallHistory, updateCallHistoryBySid } from "./src/repository/callHistory";
+import { OutboundHandler } from "./src/api/outbound";
 
 // Initialize database
 const err = await initDb(env.DB_HOST, Number(env.DB_PORT), env.DB_USER, env.DB_PASSWORD, env.DB_NAME);
@@ -51,8 +53,10 @@ const server: Serve = {
         return UsersHandler.GET(req);
       }
       return new Response("Method not allowed", { status: 405 });
+    } else if (pathname === "/outbound") {
+      return OutboundHandler.POST(req);
     } else if (pathname === "/media-stream") {
-      console.log("APP: Media stream request received, host:", req.headers.get("host"));
+      console.log("APP: Media stream request received, host:", req);
       if (this.upgrade(req)) {
         console.log("APP: Upgraded to WebSocket");
         return; // WebSocket will take over
@@ -81,10 +85,18 @@ const server: Serve = {
       deepgramService.connect();
       console.log('APP: Deepgram service connected');
 
+      (ws as any).data = {
+        memoryService,
+        textToSpeechService,
+        openAiTextService,
+        deepgramService,
+        streamSidTwilio: null,
+      };
+
       // Add event listener for transcript events
       deepgramService.on('transcription', (transcript: string) => {
         console.log('📝 Received transcript event:', transcript);
-        openAiTextService?.handleMessage(JSON.stringify({
+        (ws as any).data.openAiTextService?.handleMessage(JSON.stringify({
           event: 'text',
           text: transcript
         }));
@@ -96,7 +108,7 @@ const server: Serve = {
         if (isSpeaking) {
           // Clear current AI response when user starts speaking
           ws.send(JSON.stringify({
-            streamSid: streamSidTwilio,
+            streamSid: (ws as any).data.streamSidTwilio,
             event: 'clear',
           }));
         }
@@ -109,7 +121,7 @@ const server: Serve = {
       // Add event listener for OpenAI response done events
       openAiTextService.on('openai_response_done', (response: { partialResponseIndex: number, partialResponse: string }) => {
         console.log(`APP: Received OpenAI response chunk ${response.partialResponseIndex}:`, response.partialResponse);
-        textToSpeechService?.convertToSpeech(response.partialResponse, response.partialResponseIndex);
+        (ws as any).data.textToSpeechService?.convertToSpeech(response.partialResponse, response.partialResponseIndex);
       });
 
       textToSpeechService.on('text_to_speech_done', (response: { streamSid: string, base64Audio: string }) => {
@@ -128,10 +140,11 @@ const server: Serve = {
         // Handle media events from Twilio
         if (data.event === 'media') {
           // Send audio to Deepgram for speech-to-text
-          deepgramService?.handleMessage(message);
+          (ws as any).data.deepgramService?.handleMessage(message);
         }
         // Handle start event to set streamSid
         else if (data.event === 'start') {
+          console.log('APP: Received start event:', data);
           const { callSid } = data.start;
           const call = await twilioClient.calls(callSid).fetch();
           const { to } = call;
@@ -139,16 +152,23 @@ const server: Serve = {
           console.log("APP: User:", JSON.stringify(user));
           if (user) {
             console.log(`MemoryService: Initializing user ${user.name}`);
-            memoryService?.init_user(user.name);
-            openAiTextService?.connect();
+            (ws as any).data.memoryService?.init_user(user.name);
+            (ws as any).data.openAiTextService?.connect();
+            addCallHistory({
+              userId: user.id,
+              callSid: callSid,
+              duration: 0,
+              startAt: new Date(),
+              endAt: new Date(),
+            });
             console.log('APP: OpenAI Text service connected');
           } else {
             throw new Error(`APP: No user_id found in config for number: ${to}`);
           }
           const streamSid = data.start?.streamSid;
           if (streamSid) {
-            textToSpeechService?.setStreamSid(streamSid);
-            streamSidTwilio = streamSid;
+            (ws as any).data.textToSpeechService?.setStreamSid(streamSid);
+            (ws as any).data.streamSidTwilio = streamSid;
           } else {
             console.warn('APP: No streamSid found in start event');
           }
@@ -158,13 +178,16 @@ const server: Serve = {
       }
     },
 
-    close: (ws: ServerWebSocket<undefined>) => {
-      openAiTextService?.disconnect();
-      deepgramService?.disconnect();
-      textToSpeechService?.disconnect();
-      openAiTextService = null;
-      deepgramService = null;
-      textToSpeechService = null;
+    close: (ws: ServerWebSocket<undefined>, code: number, reason: string) => {
+      (ws as any).data?.openAiTextService?.disconnect();
+      (ws as any).data?.deepgramService?.disconnect();
+      (ws as any).data?.textToSpeechService?.disconnect();
+      if ((ws as any).data?.streamSidTwilio) {
+        updateCallHistoryBySid((ws as any).data.streamSidTwilio, {
+          endAt: new Date(),
+        });
+      }
+      (ws as any).data = undefined;
       console.log("APP: Client disconnected.");
     },
   },
