@@ -8,13 +8,13 @@ import { UsersHandler } from "./src/api/users";
 
 import { MemoryService } from "./src/services/memory";
 import { Twilio } from "twilio";
-import UserDbService from "./src/repository/users";
 import { SchedulerService } from "./src/services/scheduler";
 import { CronService } from "./src/services/cron/cron";
 import { initDb } from "./src/pkg/db";
 import { env } from "./src/config/env";
-import { addCallHistory, updateCallHistoryBySid } from "./src/repository/callHistory";
 import { OutboundHandler } from "./src/api/outbound";
+import { CallHistoryService } from "./src/services/callHistory";
+import { UserService } from "./src/services/user";
 
 // Initialize database
 const err = await initDb(env.DB_HOST, Number(env.DB_PORT), env.DB_USER, env.DB_PASSWORD, env.DB_NAME);
@@ -28,12 +28,13 @@ let memoryService: MemoryService | null = null;
 let openAiTextService: OpenAITextService | null = null;
 let textToSpeechService: TextToSpeechService | null = null;
 let deepgramService: DeepgramService | null = null;
-let streamSidTwilio: string | null = null;
 
 const PORT = Number(env.PORT);
 
 let schedulerService = new SchedulerService(twilioClient, env.FROM_NUMBER);
 let cronService = new CronService(schedulerService);
+let userService = new UserService(twilioClient);
+let callHistoryService = new CallHistoryService(twilioClient);
 cronService.start();
 
 const server: Serve = {
@@ -90,7 +91,7 @@ const server: Serve = {
         textToSpeechService,
         openAiTextService,
         deepgramService,
-        streamSidTwilio: null,
+        callSidTwilio: null,
       };
 
       // Add event listener for transcript events
@@ -108,7 +109,7 @@ const server: Serve = {
         if (isSpeaking) {
           // Clear current AI response when user starts speaking
           ws.send(JSON.stringify({
-            streamSid: (ws as any).data.streamSidTwilio,
+            streamSid: (ws as any).data.callSidTwilio,
             event: 'clear',
           }));
         }
@@ -124,11 +125,11 @@ const server: Serve = {
         (ws as any).data.textToSpeechService?.convertToSpeech(response.partialResponse, response.partialResponseIndex);
       });
 
-      textToSpeechService.on('text_to_speech_done', (response: { streamSid: string, base64Audio: string }) => {
+      textToSpeechService.on('text_to_speech_done', (response: { callSid: string, base64Audio: string }) => {
         console.log('APP: Text-to-Speech conversion completed');
         ws.send(JSON.stringify({
           event: 'media',
-          streamSid: response.streamSid,
+          streamSid: response.callSid, // this is expected
           media: { payload: response.base64Audio }
         }));
       });
@@ -146,47 +147,28 @@ const server: Serve = {
         else if (data.event === 'start') {
           console.log('APP: Received start event:', data);
           const { callSid } = data.start;
-          const call = await twilioClient.calls(callSid).fetch();
-          const { to } = call;
-          const user = await UserDbService.findUserByPhoneNumber(to);
-          console.log("APP: User:", JSON.stringify(user));
-          if (user) {
-            console.log(`MemoryService: Initializing user ${user.name}`);
-            (ws as any).data.memoryService?.init_user(user.name);
-            (ws as any).data.openAiTextService?.connect();
-            addCallHistory({
-              userId: user.id,
-              callSid: callSid,
-              duration: 0,
-              startAt: new Date(),
-              endAt: new Date(),
-            });
-            console.log('APP: OpenAI Text service connected');
-          } else {
-            throw new Error(`APP: No user_id found in config for number: ${to}`);
-          }
-          const streamSid = data.start?.streamSid;
-          if (streamSid) {
-            (ws as any).data.textToSpeechService?.setStreamSid(streamSid);
-            (ws as any).data.streamSidTwilio = streamSid;
-          } else {
-            console.warn('APP: No streamSid found in start event');
-          }
+          let user = await userService.getUserByCallSid(callSid);
+          (ws as any).data.memoryService?.init_user(user.name);
+          (ws as any).data.openAiTextService?.connect();
+          (ws as any).data.textToSpeechService?.setCallSid(callSid);
+          (ws as any).data.callSidTwilio = callSid;
+          await callHistoryService.startCallHistory(callSid, user);
         }
       } catch (error) {
         console.error('APP: Error handling WebSocket message:', error);
       }
     },
 
-    close: (ws: ServerWebSocket<undefined>, code: number, reason: string) => {
+    close: async (ws: ServerWebSocket<undefined>, code: number, reason: string) => {
       (ws as any).data?.openAiTextService?.disconnect();
       (ws as any).data?.deepgramService?.disconnect();
       (ws as any).data?.textToSpeechService?.disconnect();
-      if ((ws as any).data?.streamSidTwilio) {
-        updateCallHistoryBySid((ws as any).data.streamSidTwilio, {
-          endAt: new Date(),
-        });
+      const callSid = (ws as any).data.callSidTwilio;
+      if (!callSid) {
+        console.warn('APP: No callSid found in close event');
+        return;
       }
+      await callHistoryService.endCallHistory(callSid);
       (ws as any).data = undefined;
       console.log("APP: Client disconnected.");
     },

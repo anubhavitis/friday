@@ -8,7 +8,7 @@ const envSchema = z.object({
   FROM_NUMBER: z.string().min(1, 'From Number is required'),
   
   // Server configuration
-  SERVER: z.string().url('Server URL must be a valid URL'),
+  SERVER: z.string().min(1, 'Server URL is required'),
   PORT: z.string().optional().default('3000'),
   
   // AI Services
@@ -18,7 +18,7 @@ const envSchema = z.object({
   
   // Database configuration
   DB_HOST: z.string().min(1, 'Database host is required').default('localhost'),
-  DB_PORT: z.number().min(1000, 'Database port is required').default(5432),
+  DB_PORT: z.string().min(1, 'Database port is required').default('5432'),
   DB_USER: z.string().min(1, 'Database user is required').default('postgres'),
   DB_PASSWORD: z.string().min(1, 'Database password is required').default('postgres'),
   DB_NAME: z.string().min(1, 'Database name is required').default('friday'),
