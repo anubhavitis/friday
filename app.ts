@@ -57,7 +57,7 @@ const server: Serve = {
     } else if (pathname === "/outbound") {
       return OutboundHandler.POST(req);
     } else if (pathname === "/media-stream") {
-      console.log("APP: Media stream request received, host:", req);
+      console.log("APP: Media stream request received, host:", req.headers.get("host"));
       if (this.upgrade(req)) {
         console.log("APP: Upgraded to WebSocket");
         return; // WebSocket will take over
@@ -92,6 +92,7 @@ const server: Serve = {
         openAiTextService,
         deepgramService,
         callSidTwilio: null,
+        streamSidTwilio: null,
       };
 
       // Add event listener for transcript events
@@ -109,7 +110,7 @@ const server: Serve = {
         if (isSpeaking) {
           // Clear current AI response when user starts speaking
           ws.send(JSON.stringify({
-            streamSid: (ws as any).data.callSidTwilio,
+            streamSid: (ws as any).data.streamSidTwilio,
             event: 'clear',
           }));
         }
@@ -125,11 +126,11 @@ const server: Serve = {
         (ws as any).data.textToSpeechService?.convertToSpeech(response.partialResponse, response.partialResponseIndex);
       });
 
-      textToSpeechService.on('text_to_speech_done', (response: { callSid: string, base64Audio: string }) => {
+      textToSpeechService.on('text_to_speech_done', (response: { base64Audio: string }) => {
         console.log('APP: Text-to-Speech conversion completed');
         ws.send(JSON.stringify({
           event: 'media',
-          streamSid: response.callSid, // this is expected
+          streamSid: (ws as any).data.streamSidTwilio,
           media: { payload: response.base64Audio }
         }));
       });
@@ -145,13 +146,13 @@ const server: Serve = {
         }
         // Handle start event to set streamSid
         else if (data.event === 'start') {
-          console.log('APP: Received start event:', data);
-          const { callSid } = data.start;
+          console.log('APP: Received start event');
+          const { callSid, streamSid } = data.start;
           let user = await userService.getUserByCallSid(callSid);
           (ws as any).data.memoryService?.init_user(user.name);
           (ws as any).data.openAiTextService?.connect();
-          (ws as any).data.textToSpeechService?.setCallSid(callSid);
           (ws as any).data.callSidTwilio = callSid;
+          (ws as any).data.streamSidTwilio = streamSid;
           await callHistoryService.startCallHistory(callSid, user);
         }
       } catch (error) {

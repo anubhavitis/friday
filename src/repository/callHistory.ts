@@ -5,7 +5,7 @@ import { eq } from "drizzle-orm";
 const CallHistoryDbService = {
   addCallHistory: async function (entry: NewCallHistory): Promise<CallHistory> {
     try {
-      console.log("Adding call history:", entry);
+      console.log("Adding call history with sid:", entry.callSid);
       const result = await db.insert(callHistory).values(entry).returning();
       return result[0];
     } catch (error) {
