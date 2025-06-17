@@ -8,8 +8,10 @@ import { UsersHandler } from "./src/api/users";
 
 import { MemoryService } from "./src/services/memory";
 import { Twilio } from "twilio";
-import yaml from 'js-yaml';
-import { findUserByPhoneNumber } from "./src/repository/users";
+import UserDbService from "./src/repository/users";
+import { SchedulerService } from "./src/services/scheduler";
+import { CronService } from "./src/services/cron/cron";
+import { initDb } from "./src/pkg/db";
 
 const {
   TWILIO_ACCOUNT_SID,
@@ -18,26 +20,26 @@ const {
   SERVER,
   OPENAI_API_KEY,
   DEEPGRAM_API_KEY,
-  MEM0_API_KEY
+  MEM0_API_KEY,
+  DB_HOST,
+  DB_PORT,
+  DB_USER,
+  DB_PASSWORD,
+  DB_NAME,
 } = process.env;
 
-if (!TWILIO_ACCOUNT_SID || !TWILIO_AUTH_TOKEN || !FROM_NUMBER || !SERVER || !OPENAI_API_KEY || !DEEPGRAM_API_KEY || !MEM0_API_KEY) {
+if (!TWILIO_ACCOUNT_SID || !TWILIO_AUTH_TOKEN || !FROM_NUMBER || !SERVER || !OPENAI_API_KEY || !DEEPGRAM_API_KEY || !MEM0_API_KEY || !DB_HOST || !DB_PORT || !DB_USER || !DB_PASSWORD || !DB_NAME) {
   console.error(
     "APP: One or more environment variables are missing. Please ensure TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, PHONE_NUMBER_FROM, DOMAIN, OPENAI_API_KEY, and DEEPGRAM_API_KEY are set."
   );
   process.exit(1);
 }
 
-interface Config {
-  users: {
-    [key: string]: string;
-  }
+const err = await initDb(DB_HOST, Number(DB_PORT), DB_USER, DB_PASSWORD, DB_NAME);
+if (err) {
+  console.error('APP: Database connection failed:', err);
+  process.exit(1);
 }
-
-const configFile = Bun.file("config.yaml");
-const configContent = await configFile.text();
-const config: Config = yaml.load(configContent) as Config;
-console.log("APP: Config:", config);
 
 const twilioClient = new Twilio(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN);
 let memoryService: MemoryService | null = null;
@@ -46,6 +48,10 @@ let deepgramService: DeepgramService | null = null;
 let textToSpeechService: TextToSpeechService | null = null;
 let streamSidTwilio: string | null = null;
 const PORT = process.env.PORT || 3000;
+
+let schedulerService = new SchedulerService(twilioClient, FROM_NUMBER);
+let cronService = new CronService(schedulerService);
+cronService.start();
 
 const server: Serve = {
   port: PORT,
@@ -147,10 +153,8 @@ const server: Serve = {
         else if (data.event === 'start') {
           const { callSid } = data.start;
           const call = await twilioClient.calls(callSid).fetch();
-          const { from, to } = call;
-          console.log("APP: Call details:", { from, to });
-          console.log("APP: Config:", config.users);
-          const user = await findUserByPhoneNumber(to);
+          const { to } = call;
+          const user = await UserDbService.findUserByPhoneNumber(to);
           console.log("APP: User:", JSON.stringify(user));
           if (user) {
             console.log(`MemoryService: Initializing user ${user.name}`);

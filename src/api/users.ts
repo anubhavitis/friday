@@ -1,4 +1,4 @@
-import { addUser, findUserByPhoneNumber } from '../repository/users';
+import UserDbService from '../repository/users';
 
 export class UsersHandler {
   static async POST(req: Request) {
@@ -14,7 +14,7 @@ export class UsersHandler {
       }
 
       // Check if user already exists
-      const existingUser = await findUserByPhoneNumber(phoneNumber);
+      const existingUser = await UserDbService.findUserByPhoneNumber(phoneNumber);
       if (existingUser) {
         return new Response(
           JSON.stringify({ error: 'User with this phone number already exists' }),
@@ -22,7 +22,7 @@ export class UsersHandler {
         );
       }
 
-      const user = await addUser({ name, phoneNumber });
+      const user = await UserDbService.addUser({ name, phoneNumber });
       return new Response(
         JSON.stringify(user),
         { status: 201, headers: { 'Content-Type': 'application/json' } }
@@ -48,7 +48,7 @@ export class UsersHandler {
         );
       }
 
-      const user = await findUserByPhoneNumber(phoneNumber);
+      const user = await UserDbService.findUserByPhoneNumber(phoneNumber);
       if (!user) {
         return new Response(
           JSON.stringify({ error: 'User not found' }),

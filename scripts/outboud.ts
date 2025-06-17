@@ -1,8 +1,3 @@
-/*
-  You can use this script to place an outbound call
-  to your own mobile phone.
-*/
-
 import dotenv from 'dotenv';
 import twilio from 'twilio';
 
