@@ -12,7 +12,7 @@ export class CronService {
 
     private getJobs(): CronJob {
         const job = new CronJob(
-            '*/1 * * * *', // Run every 5 minutes
+            '*/5 * * * *', // Run every 5 minutes
             async () => {
                 console.log('Checking for scheduled events...');
                 await this.schedulerService.checkRecentScheduledEvents();
