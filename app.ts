@@ -8,13 +8,14 @@ import { UsersHandler } from "./src/api/users";
 
 import { MemoryService } from "./src/services/memory";
 import { Twilio } from "twilio";
-import { SchedulerService } from "./src/services/scheduler";
+import { SchedulerCronService } from "./src/services/cron/scheduler";
 import { CronService } from "./src/services/cron/cron";
 import { initDb } from "./src/pkg/db";
 import { env } from "./src/config/env";
 import { OutboundHandler } from "./src/api/outbound";
 import { CallHistoryService } from "./src/services/callHistory";
 import { UserService } from "./src/services/user";
+import { SchedulerHandler } from "./src/api/scheduler";
 
 // Initialize database
 const err = await initDb(env.DB_HOST, Number(env.DB_PORT), env.DB_USER, env.DB_PASSWORD, env.DB_NAME);
@@ -27,7 +28,7 @@ const twilioClient = new Twilio(env.TWILIO_ACCOUNT_SID, env.TWILIO_AUTH_TOKEN);
 
 const PORT = Number(env.PORT);
 
-let schedulerService = new SchedulerService(twilioClient, env.FROM_NUMBER);
+let schedulerService = new SchedulerCronService(twilioClient, env.FROM_NUMBER);
 let cronService = new CronService(schedulerService);
 let userService = new UserService(twilioClient);
 let callHistoryService = new CallHistoryService(twilioClient);
@@ -39,29 +40,45 @@ const server: Serve = {
     const url = new URL(req.url);
     const pathname = url.pathname;
 
-    if (pathname === "/health") {
-      return HealthHandler.GET(req);
-    } else if (pathname === "/voice/incoming") {
-      return IncomingHandler.GET(req);
-    } else if (pathname === "/users") {
-      if (req.method === "POST") {
-        return UsersHandler.POST(req);
-      } else if (req.method === "GET") {
-        return UsersHandler.GET(req);
-      }
-      return new Response("Method not allowed", { status: 405 });
-    } else if (pathname === "/outbound") {
-      return OutboundHandler.POST(req);
-    } else if (pathname === "/media-stream") {
-      console.log("APP: Media stream request received, host:", req.headers.get("host"));
-      if (this.upgrade(req)) {
-        console.log("APP: Upgraded to WebSocket");
-        return; // WebSocket will take over
-      }
-      console.log("APP: Failed to upgrade to WebSocket");
-      return new Response("Failed to upgrade to WebSocket", { status: 400 });
-    } else {
-      return new Response("Not Found", { status: 404 });
+    switch (pathname) {
+      case "/health":
+        return HealthHandler.GET(req);
+
+      case "/voice/incoming":
+        return IncomingHandler.GET(req);
+
+      case "/users":
+        switch (req.method) {
+          case "POST":
+            return UsersHandler.POST(req);
+          case "GET": 
+            return UsersHandler.GET(req);
+          default:
+            return new Response("Method not allowed", { status: 405 });
+        }
+
+      case "/scheduler":
+        switch (req.method) {
+          case "POST":
+            return SchedulerHandler.POST(req);
+          default:
+            return new Response("Method not allowed", { status: 405 });
+        }
+
+      case "/outbound":
+        return OutboundHandler.POST(req);
+
+      case "/media-stream":
+        console.log("APP: Media stream request received, host:", req.headers.get("host"));
+        if (this.upgrade(req)) {
+          console.log("APP: Upgraded to WebSocket");
+          return; // WebSocket will take over
+        }
+        console.log("APP: Failed to upgrade to WebSocket");
+        return new Response("Failed to upgrade to WebSocket", { status: 400 });
+
+      default:
+        return new Response("Not Found", { status: 404 });
     }
   },
   websocket: {
