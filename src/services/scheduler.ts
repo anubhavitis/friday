@@ -26,13 +26,19 @@ export const GetSchedulesSchema = z.object({
 export const SchedulerService = {
     async createSchedule(schedule: ICreateSchedule): Promise<Scheduler> {
         try {
-            console.log("SCHEDULER: Schedule:", schedule.time);
             const time = new Date('2000-01-01T' + schedule.time);
-            console.log("SCHEDULER: Time:", time);
+
+            // calculate next call time, today's date + schedule.time
+            let nextCallTime = new Date(new Date().setHours(time.getHours(), time.getMinutes(), 0, 0));
+            if (nextCallTime < new Date()) {
+                nextCallTime = new Date(nextCallTime.getTime() + 24 * 60 * 60 * 1000);
+            }
+            
             const scheduleData: Partial<Scheduler> = {
                 userId: schedule.user_id,
                 time: time,
                 scheduled: schedule.scheduled,
+                nextCallTime: nextCallTime,
             };
             
             const result = await SchedulerDbService.createSchedule(scheduleData);
