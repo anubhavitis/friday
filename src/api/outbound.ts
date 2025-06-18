@@ -41,7 +41,7 @@ export const OutboundHandler = {
       to: to_phonenumber,
       from: fromNumber
     });
-
+    console.log('Outbound call initiated successfully', call.sid);
     return new Response(
       JSON.stringify({ 
         success: true, 

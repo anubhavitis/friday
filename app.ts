@@ -16,7 +16,7 @@ import { OutboundHandler } from "./src/api/outbound";
 import { CallHistoryService } from "./src/services/callHistory";
 import { UserService } from "./src/services/user";
 import { SchedulerHandler } from "./src/api/scheduler";
-
+import { TwilioVoiceService } from "./src/services/twilioVoice";
 // Initialize database
 const err = await initDb(env.DB_HOST, Number(env.DB_PORT), env.DB_USER, env.DB_PASSWORD, env.DB_NAME);
 if (err) {
@@ -32,6 +32,7 @@ let schedulerService = new SchedulerCronService(twilioClient, env.FROM_NUMBER);
 let cronService = new CronService(schedulerService);
 let userService = new UserService(twilioClient);
 let callHistoryService = new CallHistoryService(twilioClient);
+let twilioVoiceService = new TwilioVoiceService(twilioClient);
 cronService.start();
 
 const server: Serve = {
@@ -139,6 +140,11 @@ const server: Serve = {
         (ws as any).data.textToSpeechService?.convertToSpeech(response.partialResponse, response.partialResponseIndex);
       });
 
+      openAiTextService.on('openai_response_ended', (response: string) => {
+        console.log('APP: OpenAI response ended:', response);
+        twilioVoiceService.hangupCall((ws as any).data.callSidTwilio);
+      });
+
       textToSpeechService.on('text_to_speech_done', (response: { base64Audio: string }) => {
         console.log('APP: Text-to-Speech conversion completed');
         ws.send(JSON.stringify({
@@ -174,7 +180,7 @@ const server: Serve = {
     },
 
     close: async (ws: ServerWebSocket<undefined>, code: number, reason: string) => {
-      (ws as any).data?.openAiTextService?.disconnect();
+      await (ws as any).data?.openAiTextService?.disconnect();
       (ws as any).data?.deepgramService?.disconnect();
       (ws as any).data?.textToSpeechService?.disconnect();
       const callSid = (ws as any).data.callSidTwilio;

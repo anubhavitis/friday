@@ -181,6 +181,9 @@ export class OpenAITextService extends EventEmitter {
             role: "assistant",
             content: completeResponse,
           });
+          if (completeResponse.includes("Bye") || completeResponse.includes("later")) {
+            this.emit('openai_response_ended', completeResponse);
+          }
         }
       } else {
         console.log("OPENAI_TEXT: Received non-text event:", data.event);
@@ -237,9 +240,9 @@ export class OpenAITextService extends EventEmitter {
     }
   }
 
-  public disconnect() {
+  public async disconnect() {
     console.log("OPENAI_TEXT: Disconnecting OpenAI Text service...");
-    this.updateMemory();
+    await this.updateMemory();
 
     this.convo_history = [];
     this.conversationHistory = [];
