@@ -15,7 +15,7 @@ import { env } from "./src/config/env";
 import { OutboundHandler } from "./src/api/outbound";
 import { CallHistoryService } from "./src/services/callHistory";
 import { UserService } from "./src/services/user";
-
+import { TwilioVoiceService } from "./src/services/twilioVoice";
 // Initialize database
 const err = await initDb(env.DB_HOST, Number(env.DB_PORT), env.DB_USER, env.DB_PASSWORD, env.DB_NAME);
 if (err) {
@@ -31,6 +31,7 @@ let schedulerService = new SchedulerService(twilioClient, env.FROM_NUMBER);
 let cronService = new CronService(schedulerService);
 let userService = new UserService(twilioClient);
 let callHistoryService = new CallHistoryService(twilioClient);
+let twilioVoiceService = new TwilioVoiceService(twilioClient);
 cronService.start();
 
 const server: Serve = {
@@ -120,6 +121,11 @@ const server: Serve = {
       openAiTextService.on('openai_response_done', (response: { partialResponseIndex: number, partialResponse: string }) => {
         console.log(`APP: Received OpenAI response chunk ${response.partialResponseIndex}:`, response.partialResponse);
         (ws as any).data.textToSpeechService?.convertToSpeech(response.partialResponse, response.partialResponseIndex);
+      });
+
+      openAiTextService.on('openai_response_ended', (response: string) => {
+        console.log('APP: OpenAI response ended:', response);
+        twilioVoiceService.hangupCall((ws as any).data.callSidTwilio);
       });
 
       textToSpeechService.on('text_to_speech_done', (response: { base64Audio: string }) => {

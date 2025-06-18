@@ -164,6 +164,9 @@ export class OpenAITextService extends EventEmitter {
         // Add complete response to conversation history
         if (completeResponse) {
           this.conversationHistory.push({ role: "assistant", content: completeResponse });
+          if (completeResponse.includes("Bye") || completeResponse.includes("later")) {
+            this.emit('openai_response_ended', completeResponse);
+          }
         }
       } else {
         console.log("OPENAI_TEXT: Received non-text event:", data.event);
