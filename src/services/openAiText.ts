@@ -240,9 +240,9 @@ export class OpenAITextService extends EventEmitter {
     }
   }
 
-  public disconnect() {
+  public async disconnect() {
     console.log("OPENAI_TEXT: Disconnecting OpenAI Text service...");
-    this.updateMemory();
+    await this.updateMemory();
 
     this.convo_history = [];
     this.conversationHistory = [];

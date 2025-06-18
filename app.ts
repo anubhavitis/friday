@@ -180,7 +180,7 @@ const server: Serve = {
     },
 
     close: async (ws: ServerWebSocket<undefined>, code: number, reason: string) => {
-      (ws as any).data?.openAiTextService?.disconnect();
+      await (ws as any).data?.openAiTextService?.disconnect();
       (ws as any).data?.deepgramService?.disconnect();
       (ws as any).data?.textToSpeechService?.disconnect();
       const callSid = (ws as any).data.callSidTwilio;
