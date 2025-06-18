@@ -1,4 +1,4 @@
-import { pgTable, serial, integer, boolean, timestamp, index } from 'drizzle-orm/pg-core';
+import { pgTable, serial, integer, boolean, timestamp, text, uniqueIndex } from 'drizzle-orm/pg-core';
 import { users } from './users';
 
 export const scheduler = pgTable('scheduler', {
@@ -9,7 +9,7 @@ export const scheduler = pgTable('scheduler', {
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull().$onUpdate(() => new Date()),
 }, (table) => ({
-  userIdIdx: index('user_id_scheduler_idx').on(table.userId),
+  userIdTimeIdx: uniqueIndex('user_id_time_scheduler_idx').on(table.userId, table.time),
 }));
 
 // Types for TypeScript

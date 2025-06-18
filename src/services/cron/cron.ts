@@ -1,18 +1,18 @@
 import { CronJob } from "cron";
-import { SchedulerService } from "../scheduler";
+import { SchedulerCronService } from "./scheduler";
 
 export class CronService {
-    private schedulerService: SchedulerService;
+    private schedulerService: SchedulerCronService;
     private job: CronJob;
 
-    constructor(schedulerService: SchedulerService) {
+    constructor(schedulerService: SchedulerCronService) {
         this.schedulerService = schedulerService;
         this.job = this.getJobs();
     }
 
     private getJobs(): CronJob {
         const job = new CronJob(
-            '*/1 * * * *', // Run every 5 minutes
+            '*/5 * * * *', // Run every 5 minutes
             async () => {
                 console.log('Checking for scheduled events...');
                 await this.schedulerService.checkRecentScheduledEvents();
