@@ -25,10 +25,6 @@ if (err) {
 }
 
 const twilioClient = new Twilio(env.TWILIO_ACCOUNT_SID, env.TWILIO_AUTH_TOKEN);
-let memoryService: MemoryService | null = null;
-let openAiTextService: OpenAITextService | null = null;
-let textToSpeechService: TextToSpeechService | null = null;
-let deepgramService: DeepgramService | null = null;
 
 const PORT = Number(env.PORT);
 
@@ -89,17 +85,17 @@ const server: Serve = {
     open: (ws: ServerWebSocket<undefined>) => {
       console.log("APP: Connected to Server WebSocket");
 
-      memoryService = new MemoryService(env.MEM0_API_KEY);
+      const memoryService = new MemoryService(env.MEM0_API_KEY);
       
       // Initialize services in the correct order with dependencies
-      textToSpeechService = new TextToSpeechService(env.DEEPGRAM_API_KEY);
+      const textToSpeechService = new TextToSpeechService(env.DEEPGRAM_API_KEY);
       textToSpeechService.connect();
       console.log('APP: Text-to-Speech service connected');
 
-      openAiTextService = new OpenAITextService(env.OPENAI_API_KEY, memoryService);
+      const openAiTextService = new OpenAITextService(env.OPENAI_API_KEY, memoryService);
 
 
-      deepgramService = new DeepgramService(env.DEEPGRAM_API_KEY);
+      const deepgramService = new DeepgramService(env.DEEPGRAM_API_KEY);
       deepgramService.connect();
       console.log('APP: Deepgram service connected');
 
