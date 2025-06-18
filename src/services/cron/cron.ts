@@ -1,11 +1,11 @@
 import { CronJob } from "cron";
-import { SchedulerService } from "../scheduler";
+import { SchedulerCronService } from "./scheduler";
 
 export class CronService {
-    private schedulerService: SchedulerService;
+    private schedulerService: SchedulerCronService;
     private job: CronJob;
 
-    constructor(schedulerService: SchedulerService) {
+    constructor(schedulerService: SchedulerCronService) {
         this.schedulerService = schedulerService;
         this.job = this.getJobs();
     }
