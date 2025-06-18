@@ -2,12 +2,17 @@ import { EventEmitter } from "events";
 import OpenAI from "openai";
 import { ChatCompletionMessageParam } from "openai/resources/chat/completions";
 import { MemoryService } from "./memory";
-import { Memory } from "mem0ai";
+import { Memory, Messages } from "mem0ai";
 import fs from "fs";
 
 interface OpenAIResponse {
   partialResponseIndex: number;
   partialResponse: string;
+}
+
+interface ConvoHistory {
+  speaker: "user" | "assistant";
+  content: string;
 }
 
 export class OpenAITextService extends EventEmitter {
@@ -18,10 +23,9 @@ export class OpenAITextService extends EventEmitter {
   private readonly MODEL = "gpt-4o-mini";
   private partialResponseIndex: number = 0;
 
-  constructor(
-    private apiKey: string,
-    memoryService: MemoryService
-  ) {
+  private convo_history: ConvoHistory[] = [];
+
+  constructor(private apiKey: string, memoryService: MemoryService) {
     super();
     this.client = new OpenAI({
       apiKey: this.apiKey,
@@ -31,12 +35,12 @@ export class OpenAITextService extends EventEmitter {
       throw new Error("MemoryService is required");
     }
     this.memoryService = memoryService;
-    this.PERSONA = fs.readFileSync('src/services/aiPersona.txt', 'utf8');
+    this.PERSONA = fs.readFileSync("src/services/aiPersona.txt", "utf8");
   }
 
   private formatTextForTTS(text: string): string {
     // Remove the delimiter and trim whitespace
-    return text.replace(/•/g, '').trim();
+    return text.replace(/•/g, "").trim();
   }
 
   public async connect() {
@@ -59,14 +63,16 @@ export class OpenAITextService extends EventEmitter {
   private async initConversation() {
     try {
       const user_info = await this.get_user_info();
-      
+
       // Create a context message that includes both persona and user information
       const contextMessage: ChatCompletionMessageParam = {
         role: "system",
-        content: `You are ${this.PERSONA}. Here is what I know about the user: ${JSON.stringify(user_info)}. 
+        content: `You are ${
+          this.PERSONA
+        }. Here is what I know about the user: ${JSON.stringify(user_info)}. 
         Use this information to create a personalized greeting. Be friendly and natural, like a friend would greet them.
         Reference specific details from their information to make the greeting more personal and engaging.
-        After greeting, ask them how their day is going.`
+        After greeting, ask them how their day is going.`,
       };
 
       this.conversationHistory.push(contextMessage);
@@ -78,35 +84,42 @@ export class OpenAITextService extends EventEmitter {
         stream: true,
       });
 
-      let completeResponse = '';
-      let partialResponse = '';
+      let completeResponse = "";
+      let partialResponse = "";
 
       for await (const chunk of stream) {
-        const content = chunk.choices[0]?.delta?.content || '';
+        const content = chunk.choices[0]?.delta?.content || "";
         const finishReason = chunk.choices[0]?.finish_reason;
 
         completeResponse += content;
         partialResponse += content;
 
         // Emit chunk when we hit a delimiter or end of response
-        if (content.trim().slice(-1) === '•' || finishReason === 'stop') {
+        if (content.trim().slice(-1) === "•" || finishReason === "stop") {
           const formattedText = this.formatTextForTTS(partialResponse);
           if (formattedText) {
             const response: OpenAIResponse = {
               partialResponseIndex: this.partialResponseIndex,
-              partialResponse: formattedText
+              partialResponse: formattedText,
             };
 
-            this.emit('openai_response_done', response);
+            this.emit("openai_response_done", response);
+            this.convo_history.push({
+              speaker: "assistant",
+              content: formattedText,
+            });
             this.partialResponseIndex++;
           }
-          partialResponse = '';
+          partialResponse = "";
         }
       }
 
       // Add complete response to conversation history
       if (completeResponse) {
-        this.conversationHistory.push({ role: "assistant", content: completeResponse });
+        this.conversationHistory.push({
+          role: "assistant",
+          content: completeResponse,
+        });
       }
     } catch (error) {
       console.error("OPENAI_TEXT: Error in initial conversation:", error);
@@ -121,10 +134,11 @@ export class OpenAITextService extends EventEmitter {
       if (data.event === "text") {
         console.log("OPENAI_TEXT: Processing text message:", data.text);
 
-
-        const memory_query = "give any information related to this user question:" + data.text;
+        this.convo_history.push({ speaker: "user", content: data.text });
+        const memory_query =
+          "give any information related to this user question:" + data.text;
         const _: Memory[] = await this.memoryService.search(memory_query);
-        
+
         // Add user message to conversation history
         this.conversationHistory.push({ role: "user", content: data.text });
 
@@ -135,35 +149,38 @@ export class OpenAITextService extends EventEmitter {
           stream: true,
         });
 
-        let completeResponse = '';
-        let partialResponse = '';
+        let completeResponse = "";
+        let partialResponse = "";
 
         for await (const chunk of stream) {
-          const content = chunk.choices[0]?.delta?.content || '';
+          const content = chunk.choices[0]?.delta?.content || "";
           const finishReason = chunk.choices[0]?.finish_reason;
 
           completeResponse += content;
           partialResponse += content;
 
           // Emit chunk when we hit a delimiter or end of response
-          if (content.trim().slice(-1) === '•' || finishReason === 'stop') {
+          if (content.trim().slice(-1) === "•" || finishReason === "stop") {
             const formattedText = this.formatTextForTTS(partialResponse);
             if (formattedText) {
               const response: OpenAIResponse = {
                 partialResponseIndex: this.partialResponseIndex,
-                partialResponse: formattedText
+                partialResponse: formattedText,
               };
 
-              this.emit('openai_response_done', response);
+              this.emit("openai_response_done", response);
               this.partialResponseIndex++;
             }
-            partialResponse = '';
+            partialResponse = "";
           }
         }
 
         // Add complete response to conversation history
         if (completeResponse) {
-          this.conversationHistory.push({ role: "assistant", content: completeResponse });
+          this.conversationHistory.push({
+            role: "assistant",
+            content: completeResponse,
+          });
         }
       } else {
         console.log("OPENAI_TEXT: Received non-text event:", data.event);
@@ -174,10 +191,59 @@ export class OpenAITextService extends EventEmitter {
     }
   }
 
+  private async updateMemory() {
+
+    console.log("OPENAI_TEXT: Updating memory with conversation history length: ", this.convo_history.length);
+    // Skip if no conversation history
+    if (this.convo_history.length === 0) {
+      return;
+    }
+
+    try {
+
+      // Format conversation history for the prompt
+      const formattedHistory = this.convo_history
+        .map((msg) => `${msg.speaker}: ${msg.content}`)
+        .join("\n");
+
+      const response = await this.client.chat.completions.create({
+        model: this.MODEL,
+        messages: [
+          {
+            role: "system",
+            content:
+              "Extract key information from this conversation and format it into clear, concise statements that capture the important details, context, and any personal information shared.",
+          },
+          {
+            role: "user",
+            content: formattedHistory,
+          },
+        ],
+        temperature: 0.3,
+      });
+
+      const summary = response.choices[0]?.message?.content;
+
+      if (summary) {
+        await this.memoryService.add([{
+          role: "user",
+          content: summary,
+        }]);
+      }
+
+      console.log("OPENAI_TEXT: Memory updated with summary: ", summary);
+    } catch (error) {
+      console.error("OPENAI_TEXT: Error updating memory:", error);
+    }
+  }
+
   public disconnect() {
     console.log("OPENAI_TEXT: Disconnecting OpenAI Text service...");
-    this.conversationHistory = []; // clear conversation history
+    this.updateMemory();
+
+    this.convo_history = [];
+    this.conversationHistory = [];
     this.partialResponseIndex = 0;
     console.log("OPENAI_TEXT: OpenAI Text service disconnected");
   }
-} 
+}
