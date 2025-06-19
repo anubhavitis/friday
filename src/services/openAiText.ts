@@ -2,7 +2,7 @@ import { EventEmitter } from "events";
 import OpenAI from "openai";
 import { ChatCompletionMessageParam } from "openai/resources/chat/completions";
 import { MemoryService } from "./memory";
-import { Memory, Messages } from "mem0ai";
+import { Memory } from "mem0ai";
 import fs from "fs";
 
 interface OpenAIResponse {
@@ -10,23 +10,37 @@ interface OpenAIResponse {
   partialResponse: string;
 }
 
-interface ConvoHistory {
+interface ConversationHistory {
   speaker: "user" | "assistant";
   content: string;
 }
 
+// Import AgendaItem type from MemoryService
+type AgendaItem = {
+  type: string;
+  date: string;
+  name: string;
+  status: string;
+  details: string;
+  context: string;
+  id: string;
+  completed?: boolean;
+  completedAt?: string;
+};
+
 export class OpenAITextService extends EventEmitter {
   private client: OpenAI;
   private conversationHistory: ChatCompletionMessageParam[] = [];
-  private PERSONA: string;
+  private persona: string;
   private memoryService: MemoryService;
   private readonly MODEL = "gpt-4o-mini";
   private partialResponseIndex: number = 0;
-
-  private convo_history: ConvoHistory[] = [];
+  private conversationHistoryArray: ConversationHistory[] = [];
+  private currentDate: string;
 
   constructor(private apiKey: string, memoryService: MemoryService) {
     super();
+    
     this.client = new OpenAI({
       apiKey: this.apiKey,
     });
@@ -34,18 +48,18 @@ export class OpenAITextService extends EventEmitter {
     if (!memoryService) {
       throw new Error("MemoryService is required");
     }
+    
     this.memoryService = memoryService;
-    this.PERSONA = fs.readFileSync("src/services/aiPersona.txt", "utf8");
+    this.persona = fs.readFileSync("src/services/aiPersona.txt", "utf8");
+    this.currentDate = new Date().toISOString().split("T")[0];
   }
 
   private formatTextForTTS(text: string): string {
-    // Remove the delimiter and trim whitespace
     return text.replace(/•/g, "").trim();
   }
 
-  public async connect() {
+  public async connect(): Promise<void> {
     try {
-      // Initialize conversation with a greeting
       await this.initConversation();
       console.log("OPENAI_TEXT: Connected to OpenAI API");
     } catch (error) {
@@ -54,25 +68,23 @@ export class OpenAITextService extends EventEmitter {
     }
   }
 
-  private async get_user_info(): Promise<Memory[]> {
+  private async getUserInfo(): Promise<Memory[]> {
     const query = "give every information related to this user";
-    const result = await this.memoryService.search(query);
-    return result;
+    return await this.memoryService.search(query);
   }
 
-  private async initConversation() {
+  private async initConversation(): Promise<void> {
     try {
-      const user_info = await this.get_user_info();
+      const userInfo = await this.getUserInfo();
+      const todayAgendas = await this.memoryService.getTodayAgendas(this.currentDate);
 
-      // Create a context message that includes both persona and user information
       const contextMessage: ChatCompletionMessageParam = {
         role: "system",
-        content: `You are ${
-          this.PERSONA
-        }. Here is what I know about the user: ${JSON.stringify(user_info)}. 
-        Use this information to create a personalized greeting. Be friendly and natural, like a friend would greet them.
-        Reference specific details from their information to make the greeting more personal and engaging.
-        After greeting, ask them how their day is going.`,
+        content: `Today is ${this.currentDate}. You are ${this.persona}. Here is what I know about the user: ${JSON.stringify(userInfo)}. 
+
+${todayAgendas.length > 0 ? `Today's planned agendas: ${JSON.stringify(todayAgendas)}` : "No specific agendas planned for today."}
+
+Use this information to greet them naturally and ask about their planned activities if any exist. If they mention completing any agenda items, mark them as completed. Be friendly and light — don't dig too deeply into specific activities like shows or workouts unless the user brings it up. Keep it breezy.`
       };
 
       this.conversationHistory.push(contextMessage);
@@ -97,6 +109,7 @@ export class OpenAITextService extends EventEmitter {
         // Emit chunk when we hit a delimiter or end of response
         if (content.trim().slice(-1) === "•" || finishReason === "stop") {
           const formattedText = this.formatTextForTTS(partialResponse);
+          
           if (formattedText) {
             const response: OpenAIResponse = {
               partialResponseIndex: this.partialResponseIndex,
@@ -104,12 +117,13 @@ export class OpenAITextService extends EventEmitter {
             };
 
             this.emit("openai_response_done", response);
-            this.convo_history.push({
+            this.conversationHistoryArray.push({
               speaker: "assistant",
               content: formattedText,
             });
             this.partialResponseIndex++;
           }
+          
           partialResponse = "";
         }
       }
@@ -127,20 +141,29 @@ export class OpenAITextService extends EventEmitter {
     }
   }
 
-  public async handleMessage(message: string) {
+  public async handleMessage(message: string): Promise<void> {
     try {
       const data = JSON.parse(message);
 
       if (data.event === "text") {
         console.log("OPENAI_TEXT: Processing text message:", data.text);
 
-        this.convo_history.push({ speaker: "user", content: data.text });
-        const memory_query =
-          "give any information related to this user question:" + data.text;
-        const _: Memory[] = await this.memoryService.search(memory_query);
+        this.conversationHistoryArray.push({ 
+          speaker: "user", 
+          content: data.text 
+        });
+
+        // Check if user is mentioning completing an agenda
+        await this.checkForAgendaCompletion(data.text);
+
+        const memoryQuery = `give any information related to this user question: ${data.text}`;
+        await this.memoryService.search(memoryQuery);
 
         // Add user message to conversation history
-        this.conversationHistory.push({ role: "user", content: data.text });
+        this.conversationHistory.push({ 
+          role: "user", 
+          content: data.text 
+        });
 
         const stream = await this.client.chat.completions.create({
           model: this.MODEL,
@@ -162,6 +185,7 @@ export class OpenAITextService extends EventEmitter {
           // Emit chunk when we hit a delimiter or end of response
           if (content.trim().slice(-1) === "•" || finishReason === "stop") {
             const formattedText = this.formatTextForTTS(partialResponse);
+            
             if (formattedText) {
               const response: OpenAIResponse = {
                 partialResponseIndex: this.partialResponseIndex,
@@ -171,6 +195,7 @@ export class OpenAITextService extends EventEmitter {
               this.emit("openai_response_done", response);
               this.partialResponseIndex++;
             }
+            
             partialResponse = "";
           }
         }
@@ -181,6 +206,7 @@ export class OpenAITextService extends EventEmitter {
             role: "assistant",
             content: completeResponse,
           });
+          
           if (completeResponse.includes("Bye") || completeResponse.includes("later")) {
             this.emit('openai_response_ended', completeResponse);
           }
@@ -194,59 +220,176 @@ export class OpenAITextService extends EventEmitter {
     }
   }
 
-  private async updateMemory() {
+  private async checkForAgendaCompletion(userMessage: string): Promise<void> {
+    try {
+      // Look for completion keywords
+      const completionKeywords = [
+        'completed', 'finished', 'done', 'accomplished', 'finished with',
+        'went to', 'attended', 'did', 'finished the', 'completed the'
+      ];
+      
+      const hasCompletionKeyword = completionKeywords.some(keyword => 
+        userMessage.toLowerCase().includes(keyword.toLowerCase())
+      );
+      
+      if (hasCompletionKeyword) {
+        // Use the memory service to check for agenda completion
+        await this.memoryService.checkAgendaCompletion(userMessage, this.currentDate);
+      }
+    } catch (error) {
+      console.error("OPENAI_TEXT: Error checking for agenda completion:", error);
+    }
+  }
 
-    console.log("OPENAI_TEXT: Updating memory with conversation history length: ", this.convo_history.length);
+  private async extractAgendaItems(formattedHistory: string, today: string): Promise<AgendaItem[]> {
+    const response = await this.client.chat.completions.create({
+      model: this.MODEL,
+      messages: [
+        {
+          role: "system",
+          content: `Today is ${today}. Extract and COMBINE all related agenda items from this conversation into as few actionable items as possible. 
+Return a JSON array of objects like:
+
+{
+  "type": "agenda_item",
+  "date": "YYYY-MM-DD",
+  "name": "Plan to go to the gym and run for 2 kms",
+  "status": "planned",
+  "details": "...",
+  "context": "...",
+  "id": "unique_identifier"
+}
+
+Do not include context-only or interest-only items. Only include actionable plans with a date. Do not include summary text or markdown formatting.`
+        },
+        {
+          role: "user",
+          content: formattedHistory,
+        },
+      ],
+      temperature: 0.3,
+    });
+
+    const rawText = response.choices[0]?.message?.content || "[]";
+    const startIdx = rawText.indexOf("[");
+    const endIdx = rawText.lastIndexOf("]") + 1;
+    const jsonString = rawText.slice(startIdx, endIdx);
+
+    try {
+      const agendaItems = JSON.parse(jsonString);
+      // Only keep actionable agenda items (with type, date, and name)
+      const actionableAgendas = (agendaItems as any[]).filter(item => 
+        item.type === "agenda_item" && item.date && item.name
+      ).map(item => ({
+        ...item,
+        id: item.id || `agenda_${today.replace(/-/g, '')}_${Date.now()}`,
+        completed: false,
+        completedAt: undefined
+      }));
+      return actionableAgendas;
+    } catch (err) {
+      console.error("OPENAI_TEXT: Error parsing agenda JSON:", err, rawText);
+      return [];
+    }
+  }
+
+  private async extractInterestsSummary(formattedHistory: string, today: string): Promise<string> {
+    const response = await this.client.chat.completions.create({
+      model: this.MODEL,
+      messages: [
+        {
+          role: "system",
+          content: `Today is ${today}. Summarize any new or recurring interests expressed in this conversation. 
+Focus on what the user is excited about, exploring, or doing regularly. 
+Do not include agenda items or specific plans. Return a single paragraph summary without any markdown formatting.`,
+        },
+        {
+          role: "user",
+          content: formattedHistory,
+        },
+      ],
+      temperature: 0.3,
+    });
+
+    return response.choices[0]?.message?.content?.trim() || "";
+  }
+
+  private async filterSummaryWithAgendas(summary: string, agendaItems: AgendaItem[]): Promise<string> {
+    const agendaList = agendaItems.map(a => a.name).join('\n');
+    const response = await this.client.chat.completions.create({
+      model: this.MODEL,
+      messages: [
+        {
+          role: "system",
+          content: "Given the following summary and agenda items, remove from the summary any information that is already covered by the agenda items. Only return the remaining summary text."
+        },
+        {
+          role: "user",
+          content: `Summary: ${summary}\nAgendas:\n${agendaList}`
+        }
+      ],
+      temperature: 0.3,
+    });
+    return response.choices[0]?.message?.content?.trim() || "";
+  }
+
+  private async updateMemory(): Promise<void> {
+    console.log("OPENAI_TEXT: Updating memory with conversation history length:", this.conversationHistoryArray.length);
+    
     // Skip if no conversation history
-    if (this.convo_history.length === 0) {
+    if (this.conversationHistoryArray.length === 0) {
       return;
     }
 
     try {
-
       // Format conversation history for the prompt
-      const formattedHistory = this.convo_history
+      const formattedHistory = this.conversationHistoryArray
         .map((msg) => `${msg.speaker}: ${msg.content}`)
         .join("\n");
 
-      const response = await this.client.chat.completions.create({
-        model: this.MODEL,
-        messages: [
-          {
-            role: "system",
-            content:
-              "Extract key information from this conversation and format it into clear, concise statements that capture the important details, context, and any personal information shared.",
-          },
-          {
-            role: "user",
-            content: formattedHistory,
-          },
-        ],
-        temperature: 0.3,
-      });
+      const today = new Date().toISOString().split("T")[0]; // e.g., "2025-06-19"
 
-      const summary = response.choices[0]?.message?.content;
+      // Extract agenda items
+      let agendaItems = await this.extractAgendaItems(formattedHistory, today);
+      agendaItems = agendaItems.map(item => ({ ...item, id: item.id || `agenda_${today.replace(/-/g, '')}_${Date.now()}` }));
+      console.log("OPENAI_TEXT: Agenda items:", agendaItems);
 
-      if (summary) {
+      // Extract interests summary
+      const interestsSummary = await this.extractInterestsSummary(formattedHistory, today);
+      console.log("OPENAI_TEXT: Interests summary:", interestsSummary);
+
+      // Filter summary to remove agenda-related info
+      const filteredSummary = await this.filterSummaryWithAgendas(interestsSummary, agendaItems);
+      console.log("OPENAI_TEXT: Filtered summary:", filteredSummary);
+
+      // Save filtered summary if not empty
+      if (filteredSummary && filteredSummary.trim()) {
         await this.memoryService.add([{
           role: "user",
-          content: summary,
+          content: filteredSummary,
         }]);
       }
 
-      console.log("OPENAI_TEXT: Memory updated with summary: ", summary);
+      // Save agenda items using MemoryService
+      if (agendaItems.length > 0) {
+        await this.memoryService.addAgendaItems(agendaItems);
+      }
+
+      console.log("OPENAI_TEXT: Memory updated successfully");
     } catch (error) {
       console.error("OPENAI_TEXT: Error updating memory:", error);
     }
   }
 
-  public async disconnect() {
+  public async disconnect(): Promise<void> {
     console.log("OPENAI_TEXT: Disconnecting OpenAI Text service...");
+    
     await this.updateMemory();
 
-    this.convo_history = [];
     this.conversationHistory = [];
+    this.conversationHistoryArray = [];
     this.partialResponseIndex = 0;
+    
     console.log("OPENAI_TEXT: OpenAI Text service disconnected");
   }
 }
