@@ -4,6 +4,8 @@ import { ChatCompletionMessageParam } from "openai/resources/chat/completions";
 import { MemoryService } from "./memory";
 import { Memory } from "mem0ai";
 import fs from "fs";
+import AgendaDbService from "../repository/agendas";
+import type { Agenda } from "../schema/agendas";
 
 interface OpenAIResponse {
   partialResponseIndex: number;
@@ -33,12 +35,14 @@ export class OpenAITextService extends EventEmitter {
   private conversationHistory: ChatCompletionMessageParam[] = [];
   private persona: string;
   private memoryService: MemoryService;
+  private agendaService: typeof AgendaDbService;
   private readonly MODEL = "gpt-4o-mini";
   private partialResponseIndex: number = 0;
   private conversationHistoryArray: ConversationHistory[] = [];
   private currentDate: string;
+  private currentUserId: number | null = null;
 
-  constructor(private apiKey: string, memoryService: MemoryService) {
+  constructor(private apiKey: string, memoryService: MemoryService, userId?: number) {
     super();
     
     this.client = new OpenAI({
@@ -50,8 +54,14 @@ export class OpenAITextService extends EventEmitter {
     }
     
     this.memoryService = memoryService;
+    this.agendaService = AgendaDbService;
     this.persona = fs.readFileSync("src/services/aiPersona.txt", "utf8");
     this.currentDate = new Date().toISOString().split("T")[0];
+    this.currentUserId = userId || null;
+  }
+
+  public setUserId(userId: number): void {
+    this.currentUserId = userId;
   }
 
   private formatTextForTTS(text: string): string {
@@ -75,16 +85,31 @@ export class OpenAITextService extends EventEmitter {
 
   private async initConversation(): Promise<void> {
     try {
+      if (!this.currentUserId) {
+        throw new Error("User ID not set");
+      }
+
       const userInfo = await this.getUserInfo();
-      const todayAgendas = await this.memoryService.getTodayAgendas(this.currentDate);
+      const todayAgendas = await this.agendaService.getTodayAgendas(this.currentUserId, this.currentDate);
+      console.log("OPENAI_TEXT: Today's agendas:", todayAgendas);
+      let agendaContext = "";
+      if (todayAgendas.length > 0) {
+        const agendaList = todayAgendas.map(agenda => 
+          `- ${agenda.name} (${agenda.status})`
+        ).join('\n');
+        agendaContext = `Today's planned agendas:\n${agendaList}\n\nPlease ask the user about each agenda item and whether they completed it. Be specific and ask about each one individually.`;
+      } else {
+        agendaContext = "No specific agendas planned for today.";
+      }
 
       const contextMessage: ChatCompletionMessageParam = {
         role: "system",
         content: `Today is ${this.currentDate}. You are ${this.persona}. Here is what I know about the user: ${JSON.stringify(userInfo)}. 
 
-${todayAgendas.length > 0 ? `Today's planned agendas: ${JSON.stringify(todayAgendas)}` : "No specific agendas planned for today."}
+${agendaContext}
 
-Use this information to greet them naturally and ask about their planned activities if any exist. If they mention completing any agenda items, mark them as completed. Be friendly and light — don't dig too deeply into specific activities like shows or workouts unless the user brings it up. Keep it breezy.`
+Use this information to greet them naturally and ask about their planned activities if any exist, if not, based on their interests, ask them about their plans for today.
+ If they mention completing any agenda items, mark them as completed. Be friendly and light — don't dig too deeply into specific activities like shows or workouts unless the user brings it up. Keep it breezy.`
       };
 
       this.conversationHistory.push(contextMessage);
@@ -153,9 +178,6 @@ Use this information to greet them naturally and ask about their planned activit
           content: data.text 
         });
 
-        // Check if user is mentioning completing an agenda
-        await this.checkForAgendaCompletion(data.text);
-
         const memoryQuery = `give any information related to this user question: ${data.text}`;
         await this.memoryService.search(memoryQuery);
 
@@ -220,28 +242,7 @@ Use this information to greet them naturally and ask about their planned activit
     }
   }
 
-  private async checkForAgendaCompletion(userMessage: string): Promise<void> {
-    try {
-      // Look for completion keywords
-      const completionKeywords = [
-        'completed', 'finished', 'done', 'accomplished', 'finished with',
-        'went to', 'attended', 'did', 'finished the', 'completed the'
-      ];
-      
-      const hasCompletionKeyword = completionKeywords.some(keyword => 
-        userMessage.toLowerCase().includes(keyword.toLowerCase())
-      );
-      
-      if (hasCompletionKeyword) {
-        // Use the memory service to check for agenda completion
-        await this.memoryService.checkAgendaCompletion(userMessage, this.currentDate);
-      }
-    } catch (error) {
-      console.error("OPENAI_TEXT: Error checking for agenda completion:", error);
-    }
-  }
-
-  private async extractAgendaItems(formattedHistory: string, today: string): Promise<AgendaItem[]> {
+  private async extractAgendaItems(formattedHistory: string, today: string): Promise<Partial<Agenda>[]> {
     const response = await this.client.chat.completions.create({
       model: this.MODEL,
       messages: [
@@ -251,13 +252,11 @@ Use this information to greet them naturally and ask about their planned activit
 Return a JSON array of objects like:
 
 {
-  "type": "agenda_item",
-  "date": "YYYY-MM-DD",
   "name": "Plan to go to the gym and run for 2 kms",
+  "date": "YYYY-MM-DD",
   "status": "planned",
   "details": "...",
-  "context": "...",
-  "id": "unique_identifier"
+  "context": "..."
 }
 
 Do not include context-only or interest-only items. Only include actionable plans with a date. Do not include summary text or markdown formatting.`
@@ -277,14 +276,15 @@ Do not include context-only or interest-only items. Only include actionable plan
 
     try {
       const agendaItems = JSON.parse(jsonString);
-      // Only keep actionable agenda items (with type, date, and name)
+      // Only keep actionable agenda items (with date and name)
       const actionableAgendas = (agendaItems as any[]).filter(item => 
-        item.type === "agenda_item" && item.date && item.name
+        item.date && item.name
       ).map(item => ({
-        ...item,
-        id: item.id || `agenda_${today.replace(/-/g, '')}_${Date.now()}`,
-        completed: false,
-        completedAt: undefined
+        name: item.name,
+        date: item.date,
+        status: item.status || 'planned',
+        details: item.details || '',
+        context: item.context || ''
       }));
       return actionableAgendas;
     } catch (err) {
@@ -314,7 +314,7 @@ Do not include agenda items or specific plans. Return a single paragraph summary
     return response.choices[0]?.message?.content?.trim() || "";
   }
 
-  private async filterSummaryWithAgendas(summary: string, agendaItems: AgendaItem[]): Promise<string> {
+  private async filterSummaryWithAgendas(summary: string, agendaItems: Partial<Agenda>[]): Promise<string> {
     const agendaList = agendaItems.map(a => a.name).join('\n');
     const response = await this.client.chat.completions.create({
       model: this.MODEL,
@@ -349,9 +349,41 @@ Do not include agenda items or specific plans. Return a single paragraph summary
 
       const today = new Date().toISOString().split("T")[0]; // e.g., "2025-06-19"
 
+      // First, analyze conversation for agenda completion using AI
+      if (this.currentUserId) {
+        console.log("OPENAI_TEXT: Analyzing conversation for agenda completion...");
+        
+        // First, merge any similar agendas to prevent confusion
+        await this.agendaService.mergeSimilarAgendas(this.currentUserId, today);
+        
+        const completedAgendaIds = await this.agendaService.analyzeConversationForCompletion(
+          this.currentUserId,
+          formattedHistory,
+          today,
+          this.apiKey
+        );
+        
+        if (completedAgendaIds.length > 0) {
+          // Save completion summary to memory
+          const completedAgendas = await Promise.all(
+            completedAgendaIds.map(id => this.agendaService.getAgendaById(id))
+          );
+          
+          const agendaNames = completedAgendas
+            .filter(agenda => agenda !== null)
+            .map(agenda => agenda!.name)
+            .join(', ');
+          
+          if (agendaNames) {
+            const summary = `User completed: ${agendaNames} on ${today}`;
+            await this.memoryService.saveAgendaSummary(summary);
+            console.log("OPENAI_TEXT: Saved completion summary:", summary);
+          }
+        }
+      }
+
       // Extract agenda items
-      let agendaItems = await this.extractAgendaItems(formattedHistory, today);
-      agendaItems = agendaItems.map(item => ({ ...item, id: item.id || `agenda_${today.replace(/-/g, '')}_${Date.now()}` }));
+      const agendaItems = await this.extractAgendaItems(formattedHistory, today);
       console.log("OPENAI_TEXT: Agenda items:", agendaItems);
 
       // Extract interests summary
@@ -370,9 +402,24 @@ Do not include agenda items or specific plans. Return a single paragraph summary
         }]);
       }
 
-      // Save agenda items using MemoryService
-      if (agendaItems.length > 0) {
-        await this.memoryService.addAgendaItems(agendaItems);
+      // Save agenda items using AgendaService
+      if (agendaItems.length > 0 && this.currentUserId) {
+        const agendaItemsWithUserId = agendaItems
+          .filter(item => item.name && item.date) // Ensure required fields exist
+          .map(item => ({
+            userId: this.currentUserId!,
+            name: item.name!,
+            date: item.date!,
+            status: item.status || 'planned',
+            details: item.details || null,
+            context: item.context || null
+          }));
+        await this.agendaService.addAgendaItems(agendaItemsWithUserId);
+        
+        // Save summary to memory
+        const agendaNames = agendaItems.map(item => item.name).join(', ');
+        const summary = `User is planning to: ${agendaNames} on ${today}`;
+        await this.memoryService.saveAgendaSummary(summary);
       }
 
       console.log("OPENAI_TEXT: Memory updated successfully");

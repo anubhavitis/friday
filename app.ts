@@ -169,6 +169,7 @@ const server: Serve = {
           const { callSid, streamSid } = data.start;
           let user = await userService.getUserByCallSid(callSid);
           (ws as any).data.memoryService?.init_user(user.id.toString());
+          (ws as any).data.openAiTextService?.setUserId(user.id);
           (ws as any).data.openAiTextService?.connect();
           (ws as any).data.callSidTwilio = callSid;
           (ws as any).data.streamSidTwilio = streamSid;

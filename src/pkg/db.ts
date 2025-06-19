@@ -4,8 +4,9 @@ import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 import * as usersSchema from "../schema/users";
 import * as callHistorySchema from "../schema/callHistory";
 import * as schedulerSchema from "../schema/scheduler";
+import * as agendasSchema from "../schema/agendas";
 
-let db: NodePgDatabase<typeof usersSchema & typeof callHistorySchema & typeof schedulerSchema>;
+let db: NodePgDatabase<typeof usersSchema & typeof callHistorySchema & typeof schedulerSchema & typeof agendasSchema>;
 
 export async function initDb(host: string, port: number, user: string, password: string, database: string): Promise<Error | null> {
   const pool = new Pool({
@@ -22,6 +23,7 @@ export async function initDb(host: string, port: number, user: string, password:
       ...usersSchema,
       ...callHistorySchema,
       ...schedulerSchema,
+      ...agendasSchema,
     },
   });
 
