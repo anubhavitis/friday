@@ -8,6 +8,11 @@ interface ConversationHistory {
   content: string;
 }
 
+interface CategorizedSummary {
+  content: string;
+  category: "personal_details" | "work" | "hobbies" | "interests";
+}
+
 export class SummaryService {
   private client: OpenAI;
   private readonly MODEL = "gpt-4o-mini";
@@ -89,6 +94,96 @@ IMPORTANT: Always return a JSON array, even if there's only one item. Do not inc
       return actionableAgendas;
     } catch (err) {
       console.error("SUMMARY: Error parsing agenda JSON:", err, "Raw text:", rawText);
+      return [];
+    }
+  }
+
+  private async extractCategorizedSummaries(formattedHistory: string, today: string): Promise<CategorizedSummary[]> {
+    const response = await this.client.chat.completions.create({
+      model: this.MODEL,
+      messages: [
+        {
+          role: "system",
+          content: `Today is ${today}. Analyze this conversation and extract information about the user, categorizing it into the following categories:
+
+- personal_details: Personal information like name, age, location, preferences, allergies, dietary restrictions, etc.
+- work: Work-related information, projects, job details, career goals, etc.
+- hobbies: Activities the user enjoys doing regularly, sports, creative pursuits, etc.
+- interests: Things the user is excited about, exploring, or learning about
+
+Return a JSON array of objects like:
+[
+  {
+    "content": "User is a vegetarian and allergic to nuts",
+    "category": "personal_details"
+  },
+  {
+    "content": "User is working on a Friday project",
+    "category": "work"
+  },
+  {
+    "content": "User enjoys going to the gym regularly",
+    "category": "hobbies"
+  }
+]
+
+IMPORTANT: 
+- Always return a JSON array, even if there's only one item
+- Do not include agenda items or specific plans (those are handled separately)
+- Focus on facts, preferences, and ongoing interests
+- Each item should be concise and specific
+- Do not include markdown formatting`
+        },
+        {
+          role: "user",
+          content: formattedHistory,
+        },
+      ],
+      temperature: 0.3,
+    });
+
+    const rawText = response.choices[0]?.message?.content || "[]";
+    console.log("SUMMARY: Raw categorized summaries response:", rawText);
+    
+    try {
+      // Try to find JSON array in the response
+      const startIdx = rawText.indexOf("[");
+      const endIdx = rawText.lastIndexOf("]") + 1;
+      
+      let jsonString = rawText;
+      if (startIdx !== -1 && endIdx > startIdx) {
+        jsonString = rawText.slice(startIdx, endIdx);
+      } else {
+        // If no array brackets found, try to find a single object
+        const objStartIdx = rawText.indexOf("{");
+        const objEndIdx = rawText.lastIndexOf("}") + 1;
+        if (objStartIdx !== -1 && objEndIdx > objStartIdx) {
+          // Wrap single object in array
+          jsonString = `[${rawText.slice(objStartIdx, objEndIdx)}]`;
+        }
+      }
+      
+      console.log("SUMMARY: Parsing categorized summaries JSON:", jsonString);
+      const categorizedSummaries = JSON.parse(jsonString);
+      
+      // Ensure we have an array
+      const summariesArray = Array.isArray(categorizedSummaries) ? categorizedSummaries : [categorizedSummaries];
+      
+      // Validate and filter summaries
+      const validSummaries = summariesArray.filter(item => 
+        item && 
+        item.content && 
+        item.category && 
+        ['personal_details', 'work', 'hobbies', 'interests'].includes(item.category)
+      ).map(item => ({
+        content: item.content.trim(),
+        category: item.category as "personal_details" | "work" | "hobbies" | "interests"
+      }));
+      
+      console.log("SUMMARY: Parsed categorized summaries:", validSummaries);
+      return validSummaries;
+    } catch (err) {
+      console.error("SUMMARY: Error parsing categorized summaries JSON:", err, "Raw text:", rawText);
       return [];
     }
   }
@@ -190,21 +285,28 @@ Do not include agenda items or specific plans. Return a single paragraph summary
       const agendaItems = await this.extractAgendaItems(formattedHistory, today);
       console.log("SUMMARY: Agenda items:", agendaItems);
 
-      // Extract interests summary
-      const interestsSummary = await this.extractInterestsSummary(formattedHistory, today);
-      console.log("SUMMARY: Interests summary:", interestsSummary);
+      // Extract categorized summaries instead of single interests summary
+      const categorizedSummaries = await this.extractCategorizedSummaries(formattedHistory, today);
+      console.log("SUMMARY: Categorized summaries:", categorizedSummaries);
 
-      // Filter summary to remove agenda-related info
-      // const filteredSummary = await this.filterSummaryWithAgendas(interestsSummary, agendaItems);
-      const filteredSummary = interestsSummary;
-      console.log("SUMMARY: Filtered summary:", filteredSummary);
-
-      // Save filtered summary if not empty
-      if (filteredSummary && filteredSummary.trim()) {
-        await memoryService.add([{
-          role: "user",
-          content: filteredSummary,
-        }]);
+      // Save categorized summaries with metadata
+      if (categorizedSummaries.length > 0) {
+        console.log("SUMMARY: Saving categorized summaries to memory...");
+        
+        for (const summary of categorizedSummaries) {
+          try {
+            await memoryService.add([{
+              role: "user",
+              content: summary.content,
+            }], { 
+              user_id: currentUserId?.toString() || "unknown",
+              metadata: { category: summary.category } 
+            });
+            console.log(`SUMMARY: Saved ${summary.category} summary:`, summary.content);
+          } catch (error) {
+            console.error(`SUMMARY: Error saving ${summary.category} summary:`, error);
+          }
+        }
       }
 
       // Save agenda items using AgendaService
@@ -226,10 +328,10 @@ Do not include agenda items or specific plans. Return a single paragraph summary
           console.log("SUMMARY: Successfully saved agenda items:", savedAgendas);
           
           // Save summary to memory
-          const agendaNames = agendaItems.map(item => item.name).join(', ');
-          const summary = `User is planning to: ${agendaNames} on ${today}`;
-          await memoryService.saveAgendaSummary(summary);
-          console.log("SUMMARY: Saved agenda summary to memory:", summary);
+        //   const agendaNames = agendaItems.map(item => item.name).join(', ');
+        //   const summary = `User is planning to: ${agendaNames} on ${today}`;
+        //   await memoryService.saveAgendaSummary(summary);
+        //   console.log("SUMMARY: Saved agenda summary to memory:", summary);
         } catch (error) {
           console.error("SUMMARY: Error saving agenda items to database:", error);
         }

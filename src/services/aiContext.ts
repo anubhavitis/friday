@@ -18,12 +18,20 @@ export async function buildInitialAIContext({
   // Fetch all the data
   const userInfo = await getUserInfo(memoryService);
   const userPersonalInfo = await getUserPersonalInfo(memoryService);
+  const userWorkInfo = await getUserWorkInfo(memoryService);
+  const userHobbiesInfo = await getUserHobbiesInfo(memoryService);
+  const userInterestsInfo = await getUserInterestsInfo(memoryService);
   const todayAgendas = await getTodayAgendas(userId, currentDate);
   
+  console.log("userInfo", userInfo);
+  console.log("userPersonalInfo", userPersonalInfo);
+  console.log("userWorkInfo", userWorkInfo);
+  console.log("userHobbiesInfo", userHobbiesInfo);
+  console.log("userInterestsInfo", userInterestsInfo);
   // Build agenda context
   const agendaContext = buildAgendaContext(todayAgendas, currentDate);
   
-  return `Today is ${currentDate}. You are ${persona}. Here is what I know about the user: ${userInfo}, with personal details: ${JSON.stringify(userPersonalInfo)} and check for their interests and get to know them better, about the things they are doing. 
+  return `Today is ${currentDate}. You are ${persona}. Here is what I know about the user: ${JSON.stringify(userPersonalInfo)}, work information: ${JSON.stringify(userWorkInfo)}, hobbies: ${JSON.stringify(userHobbiesInfo)}, and interests: ${JSON.stringify(userInterestsInfo)}, and some other information: ${JSON.stringify(userInfo)}, and check for their interests and get to know them better, about the things they are doing. 
 Use this information to greet them naturally with their name, and just simply ask how was your day. Once you get to know about the users day ask about their planned activities suggest something based on their interests.
 You need to take into account the users interests and preferences.
 When asking about the user agendas for the day, ask about the agenda user might be interested in.
@@ -59,6 +67,43 @@ async function getUserPersonalInfo(memoryService: MemoryService): Promise<string
   const memoryContents = memories.map(memory => memory.memory).join(". ");
   return memoryContents;
 }
+
+async function getUserWorkInfo(memoryService: MemoryService): Promise<string> {
+  const query = "give every information related to this user work projects career";
+  const memories = await memoryService.searchWithMetadata(query, { category: "work" });
+  
+  if (memories.length === 0) {
+    return "No specific work information available.";
+  }
+  
+  const memoryContents = memories.map(memory => memory.memory).join(". ");
+  return memoryContents;
+}
+
+async function getUserHobbiesInfo(memoryService: MemoryService): Promise<string> {
+  const query = "give every information related to this user hobbies activities sports";
+  const memories = await memoryService.searchWithMetadata(query, { category: "hobbies" });
+  
+  if (memories.length === 0) {
+    return "No specific hobbies information available.";
+  }
+  
+  const memoryContents = memories.map(memory => memory.memory).join(". ");
+  return memoryContents;
+}
+
+async function getUserInterestsInfo(memoryService: MemoryService): Promise<string> {
+  const query = "give every information related to this user interests learning exploring";
+  const memories = await memoryService.searchWithMetadata(query, { category: "interests" });
+  
+  if (memories.length === 0) {
+    return "No specific interests information available.";
+  }
+  
+  const memoryContents = memories.map(memory => memory.memory).join(". ");
+  return memoryContents;
+}
+
 async function getTodayAgendas(userId: number, currentDate: string) {
   return await AgendaDbService.getTodayAgendas(userId, currentDate);
 }

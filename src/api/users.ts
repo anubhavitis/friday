@@ -1,6 +1,7 @@
 import { env } from '../config/env';
 import UserDbService from '../repository/users';
 import { MemoryService } from '../services/memory';
+import { SummaryService } from '../services/summary';
 
 export class UsersHandler {
   static async POST(req: Request) {
@@ -26,14 +27,21 @@ export class UsersHandler {
 
       const user = await UserDbService.addUser({ name, phoneNumber });
       console.log('APP: User created:', user);
+      
       const memoryService = new MemoryService(env.MEM0_API_KEY);
+      const summaryService = new SummaryService(env.OPENAI_API_KEY);
       memoryService.init_user(user.id.toString());
-      console.log('Adding user details to memory');
-      await memoryService.add([{
-        role: "user",
-        content: userDetails,
-      }]);
-      console.log('User details added to memory');
+      
+      console.log('Adding user details to memory with categorization');
+      
+      // Use the summary service to categorize and save user details
+      const conversationHistory = [
+        { speaker: "user" as const, content: userDetails }
+      ];
+      
+      await summaryService.updateMemory(conversationHistory, memoryService, user.id);
+      console.log('User details categorized and added to memory');
+      
       return new Response(
         JSON.stringify(user),
         { status: 201, headers: { 'Content-Type': 'application/json' } }

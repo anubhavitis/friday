@@ -48,6 +48,15 @@ export class MemoryService {
         const result = await this.client.search(query, options);
         return result;
     }
+
+    public async searchWithMetadata(query: string, metadata: any) {
+        if (!this.user_id) {
+            throw new Error("MemoryService not initialized");
+        }
+        const options = { user_id: this.user_id, metadata: metadata };
+        const result = await this.client.search(query, options);
+        return result;
+    }
     /**
      * Save a simple summary of agenda activities
      * @param summary The summary to save
