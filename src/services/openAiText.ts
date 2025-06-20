@@ -68,6 +68,48 @@ export class OpenAITextService extends EventEmitter {
     return text.replace(/•/g, "").trim();
   }
 
+  private shouldEmitChunk(content: string, finishReason: string | null): boolean {
+    // Emit on bullet points (existing logic)
+    if (content.trim().slice(-1) === "•") {
+      return true;
+    }
+    
+    // Emit when response ends
+    if (finishReason === "stop") {
+      return true;
+    }
+    
+    // Emit on sentence endings (., !, ?)
+    const sentenceEndings = ['.', '!', '?'];
+    const lastChar = content.trim().slice(-1);
+    if (sentenceEndings.includes(lastChar)) {
+      return true;
+    }
+    
+    // Emit on natural pauses (comma followed by space and capital letter)
+    if (content.includes(', ') && /[A-Z]/.test(content.slice(-1))) {
+      const parts = content.split(', ');
+      if (parts.length > 1) {
+        const lastPart = parts[parts.length - 1];
+        if (lastPart.length > 0 && /^[A-Z]/.test(lastPart)) {
+          return true;
+        }
+      }
+    }
+    
+    // Emit on question marks (questions should always be separate)
+    if (content.includes('?')) {
+      return true;
+    }
+    
+    // Emit on exclamation marks (exclamations should be separate)
+    if (content.includes('!')) {
+      return true;
+    }
+    
+    return false;
+  }
+
   public async connect(): Promise<void> {
     try {
       await this.initConversation();
@@ -107,7 +149,7 @@ export class OpenAITextService extends EventEmitter {
         ).join('\n');
         agendaContext = `Today's planned agendas:\n${agendaList}\n\nPlease ask the user about each agenda item and whether they completed it. Be specific and ask about each one individually.`;
       } else {
-        agendaContext = "No specific agendas planned for today.";
+        agendaContext = "No specific agendas planned for today. Suggest some activities based on the user's interests.";
       }
 
       const contextMessage: ChatCompletionMessageParam = {
@@ -117,7 +159,9 @@ export class OpenAITextService extends EventEmitter {
 ${agendaContext}
 
 Use this information to greet them naturally with their name and ask about their planned activities if any exist, if not, based on their interests, ask them about their plans for today.
- If they mention completing any agenda items, mark them as completed. Be friendly and light — don't dig too deeply into specific activities like shows or workouts unless the user brings it up. Keep it breezy.`
+If they mention completing any agenda items, mark them as completed. Be friendly and light — don't dig too deeply into specific activities like shows or workouts unless the user brings it up. Keep it breezy.
+
+IMPORTANT: Break your responses into natural chunks. Send one sentence or question at a time, then wait for a response before continuing. Use "•" as a delimiter between chunks to help with text-to-speech timing.`
       };
 
       this.conversationHistory.push(contextMessage);
@@ -140,7 +184,7 @@ Use this information to greet them naturally with their name and ask about their
         partialResponse += content;
 
         // Emit chunk when we hit a delimiter or end of response
-        if (content.trim().slice(-1) === "•" || finishReason === "stop") {
+        if (this.shouldEmitChunk(partialResponse, finishReason)) {
           const formattedText = this.formatTextForTTS(partialResponse);
           
           if (formattedText) {
@@ -213,7 +257,7 @@ Use this information to greet them naturally with their name and ask about their
           partialResponse += content;
 
           // Emit chunk when we hit a delimiter or end of response
-          if (content.trim().slice(-1) === "•" || finishReason === "stop") {
+          if (this.shouldEmitChunk(partialResponse, finishReason)) {
             const formattedText = this.formatTextForTTS(partialResponse);
             
             if (formattedText) {
