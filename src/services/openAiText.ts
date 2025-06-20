@@ -104,7 +104,7 @@ export class OpenAITextService extends EventEmitter {
 
       const contextMessage: ChatCompletionMessageParam = {
         role: "system",
-        content: `Today is ${this.currentDate}. You are ${this.persona}. Here is what I know about the user: ${JSON.stringify(userInfo)}. 
+        content: `Today is ${this.currentDate}. You are ${this.persona}. Here is what I know about the user: ${JSON.stringify(userInfo)} and check for their interests. 
 
 ${agendaContext}
 
