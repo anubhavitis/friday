@@ -17,6 +17,7 @@ import { CallHistoryService } from "./src/services/callHistory";
 import { UserService } from "./src/services/user";
 import { SchedulerHandler } from "./src/api/scheduler";
 import { TwilioVoiceService } from "./src/services/twilioVoice";
+import { SummaryService } from "./src/services/summary";
 // Initialize database
 const err = await initDb(env.DB_HOST, Number(env.DB_PORT), env.DB_USER, env.DB_PASSWORD, env.DB_NAME);
 if (err) {
@@ -90,10 +91,11 @@ const server: Serve = {
       
       // Initialize services in the correct order with dependencies
       const textToSpeechService = new TextToSpeechService(env.DEEPGRAM_API_KEY);
+      const summaryService = new SummaryService(env.OPENAI_API_KEY);
       textToSpeechService.connect();
       console.log('APP: Text-to-Speech service connected');
 
-      const openAiTextService = new OpenAITextService(env.OPENAI_API_KEY, memoryService);
+      const openAiTextService = new OpenAITextService(env.OPENAI_API_KEY, memoryService, summaryService);
 
 
       const deepgramService = new DeepgramService(env.DEEPGRAM_API_KEY);
