@@ -26,32 +26,25 @@ export class SchedulerCronService {
     }
   }
 
-  private getTimeRange() {
-    const now = new Date();
-    const currentTime = now.toTimeString().slice(0, 5); // Gets HH:mm format
-    const fiveMinutesAgo = new Date(now.getTime() - 5 * 60 * 1000);
-    const fiveMinutesAgoTime = fiveMinutesAgo.toTimeString().slice(0, 5); // Gets HH:mm format
-    const time2001 = new Date("2001-01-01T" + currentTime);
-    const time2001FiveMinutesAgo = new Date("2001-01-01T" + fiveMinutesAgoTime);
-    return { time2001, time2001FiveMinutesAgo };
-  }
-
   async checkRecentScheduledEvents() {
     try {
       // Get current time in HH:mm format
-      const { time2001, time2001FiveMinutesAgo } = this.getTimeRange();
-      console.log("checking for time window", time2001FiveMinutesAgo, time2001);
+      const now = new Date();
+      const fiveMinutesAgo = new Date(now.getTime() - 5 * 60 * 1000);
+
+      console.log("checking for events between", fiveMinutesAgo, "and", now);
 
       const options = {
         where:
-          gte(scheduler.time, time2001FiveMinutesAgo) &&
-          lte(scheduler.time, time2001),
+          gte(scheduler.nextCallTime, fiveMinutesAgo) &&
+          lte(scheduler.nextCallTime, now),
       };
       const recentEvents = await SchedulerDbService.getSchedules(options);
       console.log("recentEvents length:", recentEvents.length);
 
       recentEvents.forEach(async (event) => {
         await this.makeCall(event.userId);
+        await SchedulerDbService.updateScheduleNextCallTime(event);
       });
 
       return recentEvents;
