@@ -83,6 +83,11 @@ export class OpenAITextService extends EventEmitter {
     return await this.memoryService.search(query);
   }
 
+  private async getUserPersonalInfo(): Promise<Memory[]> {
+    const query = "give every information related to this user personal details";
+    return await this.memoryService.searchWithCategory(query, ["personal_details"]);
+  }
+
   private async initConversation(): Promise<void> {
     try {
       if (!this.currentUserId) {
@@ -90,6 +95,9 @@ export class OpenAITextService extends EventEmitter {
       }
 
       const userInfo = await this.getUserInfo();
+      console.log("OPENAI_TEXT: User info:", userInfo);
+      const userPersonalInfo = await this.getUserPersonalInfo();
+      console.log("OPENAI_TEXT: User personal info:", userPersonalInfo);
       const todayAgendas = await this.agendaService.getTodayAgendas(this.currentUserId, this.currentDate);
       console.log("OPENAI_TEXT: Today's agendas:", todayAgendas);
       let agendaContext = "";
@@ -104,11 +112,11 @@ export class OpenAITextService extends EventEmitter {
 
       const contextMessage: ChatCompletionMessageParam = {
         role: "system",
-        content: `Today is ${this.currentDate}. You are ${this.persona}. Here is what I know about the user: ${JSON.stringify(userInfo)} and check for their interests. 
+        content: `Today is ${this.currentDate}. You are ${this.persona}. Here is what I know about the user: ${JSON.stringify(userInfo)}, with personal details: ${JSON.stringify(userPersonalInfo)} and check for their interests. 
 
 ${agendaContext}
 
-Use this information to greet them naturally and ask about their planned activities if any exist, if not, based on their interests, ask them about their plans for today.
+Use this information to greet them naturally with their name and ask about their planned activities if any exist, if not, based on their interests, ask them about their plans for today.
  If they mention completing any agenda items, mark them as completed. Be friendly and light — don't dig too deeply into specific activities like shows or workouts unless the user brings it up. Keep it breezy.`
       };
 
