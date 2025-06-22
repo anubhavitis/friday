@@ -23,6 +23,25 @@
             color: white;
             padding: 15px;
             text-align: center;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .header-button {
+            padding: 8px 12px;
+            background: #f8f9fa;
+            color: #007bff;
+            border: 1px solid #007bff;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+        .header-button:hover {
+            background: #e2e6ea;
+        }
+        .header-button:disabled {
+            background: #e9ecef;
+            color: #6c757d;
+            cursor: not-allowed;
         }
         .chat-messages {
             height: 400px;
@@ -85,6 +104,7 @@
     <div class="chat-container">
         <div class="chat-header">
             <h2>Chat Bot with OpenAI</h2>
+            <button id="connectionButton" class="header-button" disabled>Connecting...</button>
         </div>
         <div class="status" id="status">Connecting...</div>
         <div class="chat-messages" id="messages"></div>
@@ -96,13 +116,31 @@
 
     <script>
         let ws;
-        let userId = 'user_' + Math.random().toString(36).substr(2, 9);
+        let userId = '1';
         let currentBotMessage = '';
+        let expectingNewBotMessage = false;
+
+        const connectionButton = document.getElementById('connectionButton');
+
+        connectionButton.addEventListener('click', () => {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.close();
+            } else {
+                connect();
+            }
+        });
 
         function connect() {
             const statusEl = document.getElementById('status');
+            const messageInput = document.getElementById('messageInput');
+            const sendButton = document.getElementById('sendButton');
+
             statusEl.textContent = 'Connecting...';
             statusEl.className = 'status connecting';
+            connectionButton.textContent = 'Connecting...';
+            connectionButton.disabled = true;
+            messageInput.disabled = true;
+            sendButton.disabled = true;
 
             // Connect to the chat WebSocket
             ws = new WebSocket(`ws://localhost:3000/chat-with-openai`);
@@ -110,6 +148,8 @@
             ws.onopen = function() {
                 statusEl.textContent = 'Connected';
                 statusEl.className = 'status connected';
+                connectionButton.textContent = 'Disconnect';
+                connectionButton.disabled = false;
                 
                 // Send connect event with user ID
                 ws.send(JSON.stringify({
@@ -127,21 +167,20 @@
                     document.getElementById('messageInput').disabled = false;
                     document.getElementById('sendButton').disabled = false;
                     addMessage('Bot', 'Hello! I\'m your AI assistant. How can I help you today?', 'bot');
+                    expectingNewBotMessage = true;
                 }
                 else if (data.event === 'chat_output') {
-                    // Handle partial response
-                    if (data.payload.partialResponseIndex === 0) {
-                        // Start new bot message
+                    console.log("APP: Chat output received:", data);
+                    if (expectingNewBotMessage) {
                         currentBotMessage = data.payload.partialResponse;
                         addMessage('Bot', currentBotMessage, 'bot');
+                        expectingNewBotMessage = false;
                     } else {
-                        // Update existing bot message
                         currentBotMessage += data.payload.partialResponse;
                         updateLastBotMessage(currentBotMessage);
                     }
                 }
                 else if (data.event === 'chat_output_complete') {
-                    // Final response received
                     currentBotMessage = data.payload.finalResponse;
                     updateLastBotMessage(currentBotMessage);
                 }
@@ -155,9 +194,8 @@
                 statusEl.className = 'status disconnected';
                 document.getElementById('messageInput').disabled = true;
                 document.getElementById('sendButton').disabled = true;
-                
-                // Try to reconnect after 3 seconds
-                setTimeout(connect, 3000);
+                connectionButton.textContent = 'Connect';
+                connectionButton.disabled = false;
             };
 
             ws.onerror = function(error) {
@@ -201,6 +239,7 @@
                     }
                 }));
                 
+                expectingNewBotMessage = true;
                 // Clear input
                 input.value = '';
             }

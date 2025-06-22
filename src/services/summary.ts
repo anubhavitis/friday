@@ -130,6 +130,7 @@ Return a JSON array of objects like:
 IMPORTANT: 
 - Always return a JSON array, even if there's only one item
 - Do not include agenda items or specific plans (those are handled separately)
+- Do not include items that is already known to the ai (e.g. name, age, location, preferences, allergies, dietary restrictions, etc.)
 - Focus on facts, preferences, and ongoing interests
 - Each item should be concise and specific
 - Do not include markdown formatting`

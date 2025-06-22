@@ -6,7 +6,7 @@ import { Memory } from "mem0ai";
 import * as fs from "fs";
 import AgendaDbService from "../repository/agendas";
 // import { personasService } from "./personas";
-import { buildInitialAIContext } from "./aiContext";
+import { buildMorningInitialAIContext, buildEveningInitialAIContext } from "./aiContext";
 import { SummaryService } from "./summary";
 
 interface OpenAIResponse {
@@ -22,7 +22,8 @@ interface ConversationHistory {
 export class OpenAITextService extends EventEmitter {
   private client: OpenAI;
   private conversationHistory: ChatCompletionMessageParam[] = [];
-  private persona: string;
+  private morningPersona: string;
+  private eveningPersona: string;
   private memoryService: MemoryService;
   private agendaService: typeof AgendaDbService;
   private summaryService: SummaryService;
@@ -46,7 +47,8 @@ export class OpenAITextService extends EventEmitter {
     this.memoryService = memoryService;
     this.agendaService = AgendaDbService;
     this.summaryService = summaryService;
-    this.persona = fs.readFileSync("src/services/aiPersona.txt", "utf8");
+    this.morningPersona = fs.readFileSync("src/services/aiMorningPersona.txt", "utf8");
+    this.eveningPersona = fs.readFileSync("src/services/aiEveningPersona.txt", "utf8");
     this.currentDate = new Date().toISOString().split("T")[0];
     this.currentUserId = userId || null;
   }
@@ -117,9 +119,9 @@ export class OpenAITextService extends EventEmitter {
         throw new Error("User ID not set");
       }
 
-      const initialContext = await buildInitialAIContext({
+      const initialContext = await buildEveningInitialAIContext({
         currentDate: this.currentDate,
-        persona: this.persona,
+        persona: this.eveningPersona,
         userId: this.currentUserId,
         memoryService: this.memoryService
       });
