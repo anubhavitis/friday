@@ -85,7 +85,7 @@ const AgendaDbService = {
         console.log("AGENDA: No planned agendas to analyze");
         return [];
       }
-
+      
       // Create OpenAI client
       const openai = new OpenAI({ apiKey: openaiApiKey });
 
@@ -93,6 +93,10 @@ const AgendaDbService = {
       const agendaInfo = plannedAgendas.map(agenda => 
         `ID: ${agenda.id}, Name: "${agenda.name}", Details: "${agenda.details || 'No details'}"`
       ).join('\n');
+
+      console.log("AGENDA: Planned agendas:", agendaInfo);
+
+      console.log("AGENDA: Conversation history being analyzed:", conversationHistory);
 
       const analysisPrompt = `Today is ${currentDate}. Analyze the following conversation between a user and an AI assistant to determine which agendas were completed.
 
@@ -120,7 +124,7 @@ Focus on the user's responses and whether they indicate completion of the specif
         messages: [
           {
             role: "system",
-            content: "You are an AI assistant that analyzes conversations to determine which agenda items were completed. Return only valid JSON arrays."
+            content: "You are an AI assistant that analyzes conversations to determine which agenda items were completed. Your task is to identify when a user confirms they completed a specific agenda item. Look for positive responses like 'yes', 'yeah', 'I did', etc. when the AI asks about specific agenda items. Return only valid JSON arrays of agenda IDs."
           },
           {
             role: "user",
@@ -129,7 +133,7 @@ Focus on the user's responses and whether they indicate completion of the specif
         ],
         temperature: 0.1,
       });
-
+      console.log("AGENDA: AI analysis response:", response);
       const content = response.choices[0]?.message?.content || "[]";
       console.log("AGENDA: AI analysis response:", content);
 

@@ -240,7 +240,7 @@ Do not include agenda items or specific plans. Return a single paragraph summary
     if (conversationHistoryArray.length === 0) {
       return;
     }
-
+    console.log("SUMMARY: Conversation history:", conversationHistoryArray);
     try {
       // Format conversation history for the prompt
       const formattedHistory = conversationHistoryArray
@@ -252,10 +252,7 @@ Do not include agenda items or specific plans. Return a single paragraph summary
       // First, analyze conversation for agenda completion using AI
       if (currentUserId) {
         console.log("SUMMARY: Analyzing conversation for agenda completion...");
-        
-        // First, merge any similar agendas to prevent confusion
-        await AgendaDbService.mergeSimilarAgendas(currentUserId, today);
-        
+          
         const completedAgendaIds = await AgendaDbService.analyzeConversationForCompletion(
           currentUserId,
           formattedHistory,

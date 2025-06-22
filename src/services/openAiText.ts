@@ -242,9 +242,15 @@ export class OpenAITextService extends EventEmitter {
         }
 
         // Add complete response to conversation history
+        console.log("OPENAI_TEXT: Complete response:", completeResponse);
         if (completeResponse) {
+          console.log("OPENAI_TEXT: Adding complete response to conversation history");
           this.conversationHistory.push({
             role: "assistant",
+            content: completeResponse,
+          });
+          this.conversationHistoryArray.push({
+            speaker: "assistant",
             content: completeResponse,
           });
           
