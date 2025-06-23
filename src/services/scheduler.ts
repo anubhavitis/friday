@@ -29,12 +29,21 @@ export const SchedulerService = {
     async createSchedule(schedule: ICreateSchedule): Promise<Scheduler> {
         try {
             const time = new Date('2000-01-01T' + schedule.time);
-
-            // calculate next call time, today's date + schedule.time
-            let nextCallTime = new Date(new Date().setHours(time.getHours(), time.getMinutes(), 0, 0));
-            if (nextCallTime < new Date()) {
+            console.log("time", time, schedule.time);
+            
+            // Calculate next call time more robustly
+            const now = new Date();
+            const [hours, minutes] = schedule.time.split(':').map(Number);
+            
+            // Create next call time for today at the specified time
+            let nextCallTime = new Date(now.getFullYear(), now.getMonth(), now.getDate(), hours, minutes, 0, 0);
+            
+            // If the time has already passed today, schedule for tomorrow
+            if (nextCallTime <= now) {
                 nextCallTime = new Date(nextCallTime.getTime() + 24 * 60 * 60 * 1000);
             }
+            
+            console.log("nextCallTime calculated:", nextCallTime);
             
             const scheduleData: Partial<Scheduler> = {
                 userId: schedule.user_id,
