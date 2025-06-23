@@ -2,6 +2,7 @@ import { scheduler, Scheduler } from "../schema/scheduler";
 import SchedulerDbService from "../repository/scheduler";
 import { z } from "zod";
 import { eq } from "drizzle-orm";
+import { DateTime } from 'luxon';
 
 
 export const CreateScheduleSchema = z.object({
@@ -28,29 +29,31 @@ export const GetSchedulesSchema = z.object({
 export const SchedulerService = {
     async createSchedule(schedule: ICreateSchedule): Promise<Scheduler> {
         try {
-            const time = new Date('2000-01-01T' + schedule.time);
-            console.log("time", time, schedule.time);
             
-            // Calculate next call time more robustly
-            const now = new Date();
-            const [hours, minutes] = schedule.time.split(':').map(Number);
-            
-            // Create next call time for today at the specified time
-            let nextCallTime = new Date(now.getFullYear(), now.getMonth(), now.getDate(), hours, minutes, 0, 0);
-            
-            // If the time has already passed today, schedule for tomorrow
-            if (nextCallTime <= now) {
-                nextCallTime = new Date(nextCallTime.getTime() + 24 * 60 * 60 * 1000);
+            // Step 1: Get current time in Asia/Kolkata
+            const nowIST = DateTime.now().setZone('Asia/Kolkata');
+
+            // Step 2: Parse the scheduled time as today in IST
+            let nextCallIST = DateTime.fromFormat(schedule.time, 'HH:mm', { zone: 'Asia/Kolkata' })
+                .set({ year: nowIST.year, month: nowIST.month, day: nowIST.day });
+
+            // Step 3: If that time has already passed, move to next day
+            if (nextCallIST <= nowIST) {
+                nextCallIST = nextCallIST.plus({ days: 1 });
             }
+      
+            // Step 4: Convert to UTC for storage/scheduling
+            const nextCallUTC = nextCallIST.toUTC().toJSDate();
+           
             
-            console.log("nextCallTime calculated:", nextCallTime);
+            console.log("nextCallTime calculated:", nextCallUTC);
             
             const scheduleData: Partial<Scheduler> = {
                 userId: schedule.user_id,
-                time: time,
+                time: nextCallUTC,
                 scheduled: schedule.scheduled,
                 isMorning: schedule.is_morning ?? true,
-                nextCallTime: nextCallTime,
+                nextCallTime: nextCallUTC,
             };
             
             const result = await SchedulerDbService.createSchedule(scheduleData);
