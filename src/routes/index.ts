@@ -39,6 +39,11 @@ export const routes: RouteHandler[] = [
     handler: SchedulerHandler.POST
   },
   {
+    path: "/scheduler",
+    method: "PUT",
+    handler: SchedulerHandler.PUT
+  },
+  {
     path: "/outbound",
     method: "POST",
     handler: OutboundHandler.POST

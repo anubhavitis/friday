@@ -20,6 +20,21 @@ const SchedulerDbService = {
     return result;
   },
 
+  updateScheduleById: async function (
+    id: number,
+    updates: Partial<Scheduler>
+  ): Promise<Scheduler | null> {
+    const [result] = await db
+      .update(scheduler)
+      .set({
+        ...updates,
+        updatedAt: new Date(),
+      })
+      .where(eq(scheduler.id, id))
+      .returning();
+    return result || null;
+  },
+
   updateScheduleNextCallTime: async function (
     schedule: Scheduler
   ): Promise<Scheduler> {
@@ -39,6 +54,15 @@ const SchedulerDbService = {
     where: SQL | undefined;
   }): Promise<Scheduler[]> {
     return await db.select().from(scheduler).where(options.where);
+  },
+
+  getScheduleById: async function (id: number): Promise<Scheduler | null> {
+    const [result] = await db
+      .select()
+      .from(scheduler)
+      .where(eq(scheduler.id, id))
+      .limit(1);
+    return result || null;
   },
 };
 

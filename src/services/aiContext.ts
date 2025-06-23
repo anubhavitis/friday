@@ -74,7 +74,7 @@ export async function buildEveningInitialAIContext({
 Use this information to greet them naturally with their name, and just simply ask how was your day. You will be given the agendas for today, ask user about how the agendas went one by one.
 You need to take into account the users interests and preferences.
 IMPORTANT: ${agendaContext}
-IMPORTANT: Once user answers the agenda question, ask about the next agenda. Once all the agendas are answered, just greet them how they did wonderful job and greet them good night.
+IMPORTANT: Once user answers the agenda question, ask about the next agenda. Once all the agendas are answered, just greet them how they did wonderful job and greet them good night. And also say Bye to the user.
 IMPORTANT: Be more engaging and more human like. And keep the sentences short and concise.
 IMPORTANT: Do not use emojis in your responses.
 IMPORTANT: While asking about the agendas, ask one by one.
