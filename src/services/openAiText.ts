@@ -255,7 +255,7 @@ export class OpenAITextService extends EventEmitter {
             content: completeResponse,
           });
           
-          if (completeResponse.includes("Bye") || completeResponse.includes("later")) {
+          if (completeResponse.includes("Bye")) {
             this.emit('openai_response_ended', completeResponse);
           }
         }

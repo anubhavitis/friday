@@ -138,6 +138,7 @@ The application exposes several REST endpoints:
 - `POST /users` - Create new users
 - `GET /users` - Retrieve user information
 - `POST /scheduler` - Schedule automated calls
+- `PUT /scheduler` - Update existing schedules
 - `POST /outbound` - Initiate outbound calls
 - `WebSocket /media-stream` - Real-time audio streaming
 
@@ -146,6 +147,27 @@ The application exposes several REST endpoints:
 1. **Incoming Calls**: Configure your Twilio webhook to point to `/voice/incoming`
 2. **Outbound Calls**: Use the `/outbound` endpoint with user details
 3. **Scheduled Calls**: Use the `/scheduler` endpoint to set up automated calls
+4. **Update Schedules**: Use `PUT /scheduler` to modify existing schedules
+
+#### Updating Schedules
+
+You can update existing schedules using the `PUT /scheduler` endpoint:
+
+```json
+{
+  "id": 1,
+  "time": "14:30",
+  "scheduled": true,
+  "is_morning": false
+}
+```
+
+- `id` (required): The schedule ID to update
+- `time` (optional): New time in 24-hour format (HH:mm)
+- `scheduled` (optional): Whether the schedule is active
+- `is_morning` (optional): Whether it's a morning call
+
+When updating the time, the system automatically recalculates the `nextCallTime` using the same logic as creating a new schedule (Asia/Kolkata timezone, moves to next day if time has passed).
 
 ### Database Management
 
