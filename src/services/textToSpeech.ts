@@ -65,7 +65,7 @@ export class TextToSpeechService extends EventEmitter {
           {
             model: "aura-2-thalia-en",
             encoding: "mulaw",
-            container: "wav",
+            container: "none",
             sample_rate: 8000
           }
         );

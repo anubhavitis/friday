@@ -10,7 +10,7 @@ const AgendaDbService = {
    * @param date The date in YYYY-MM-DD format
    * @returns Array of agendas for that date
    */
-  getTodayAgendas: async function(userId: number, date: string): Promise<Agenda[]> {
+  getAgendasByDate: async function(userId: number, date: string): Promise<Agenda[]> {
     console.log("AGENDA: Getting agendas for user", userId, "on date", date);
     const userAgendas = await db
       .select()
@@ -18,8 +18,7 @@ const AgendaDbService = {
       .where(
         and(
           eq(agendas.userId, userId),
-          eq(agendas.date, date),
-          eq(agendas.status, 'planned')
+          eq(agendas.date, date)
         )
       )
       .orderBy(agendas.createdAt);
@@ -78,14 +77,14 @@ const AgendaDbService = {
     
     try {
       // Get today's planned agendas
-      const todayAgendas = await this.getTodayAgendas(userId, currentDate);
+      const todayAgendas = await this.getAgendasByDate(userId, currentDate);
       const plannedAgendas = todayAgendas.filter(agenda => agenda.status === 'planned');
       
       if (plannedAgendas.length === 0) {
         console.log("AGENDA: No planned agendas to analyze");
         return [];
       }
-
+      
       // Create OpenAI client
       const openai = new OpenAI({ apiKey: openaiApiKey });
 
@@ -93,6 +92,10 @@ const AgendaDbService = {
       const agendaInfo = plannedAgendas.map(agenda => 
         `ID: ${agenda.id}, Name: "${agenda.name}", Details: "${agenda.details || 'No details'}"`
       ).join('\n');
+
+      console.log("AGENDA: Planned agendas:", agendaInfo);
+
+      console.log("AGENDA: Conversation history being analyzed:", conversationHistory);
 
       const analysisPrompt = `Today is ${currentDate}. Analyze the following conversation between a user and an AI assistant to determine which agendas were completed.
 
@@ -120,7 +123,7 @@ Focus on the user's responses and whether they indicate completion of the specif
         messages: [
           {
             role: "system",
-            content: "You are an AI assistant that analyzes conversations to determine which agenda items were completed. Return only valid JSON arrays."
+            content: "You are an AI assistant that analyzes conversations to determine which agenda items were completed. Your task is to identify when a user confirms they completed a specific agenda item. Look for positive responses like 'yes', 'yeah', 'I did', etc. when the AI asks about specific agenda items. Return only valid JSON arrays of agenda IDs."
           },
           {
             role: "user",
@@ -129,7 +132,7 @@ Focus on the user's responses and whether they indicate completion of the specif
         ],
         temperature: 0.1,
       });
-
+      console.log("AGENDA: AI analysis response:", response);
       const content = response.choices[0]?.message?.content || "[]";
       console.log("AGENDA: AI analysis response:", content);
 
@@ -219,65 +222,6 @@ Focus on the user's responses and whether they indicate completion of the specif
       .returning();
     
     return !!deletedAgenda;
-  },
-
-  /**
-   * Merge similar agendas to prevent duplicates
-   * @param userId The user ID
-   * @param date The date
-   * @returns Number of merged agendas
-   */
-  mergeSimilarAgendas: async function(userId: number, date: string): Promise<number> {
-    console.log("AGENDA: Merging similar agendas for user", userId, "on date", date);
-    
-    try {
-      const todayAgendas = await this.getTodayAgendas(userId, date);
-      const plannedAgendas = todayAgendas.filter(agenda => agenda.status === 'planned');
-      
-      if (plannedAgendas.length <= 1) {
-        return 0;
-      }
-
-      // Group agendas by similarity (simple approach - can be improved)
-      const agendaGroups: { [key: string]: Agenda[] } = {};
-      
-      for (const agenda of plannedAgendas) {
-        // Create a key based on the main activity (remove "Plan to", "Go to", etc.)
-        const cleanName = agenda.name
-          .toLowerCase()
-          .replace(/^(plan to|go to|do|complete|finish)\s+/i, '')
-          .replace(/\s+(today|now|tonight)$/i, '');
-        
-        if (!agendaGroups[cleanName]) {
-          agendaGroups[cleanName] = [];
-        }
-        agendaGroups[cleanName].push(agenda);
-      }
-
-      let mergedCount = 0;
-      
-      // Merge agendas in each group
-      for (const [key, agendas] of Object.entries(agendaGroups)) {
-        if (agendas.length > 1) {
-          console.log(`AGENDA: Found ${agendas.length} similar agendas for: ${key}`);
-          
-          // Keep the first agenda and delete the rest
-          const [keepAgenda, ...deleteAgendas] = agendas;
-          
-          for (const deleteAgenda of deleteAgendas) {
-            await this.deleteAgenda(deleteAgenda.id);
-            mergedCount++;
-          }
-          
-          console.log(`AGENDA: Kept agenda ID ${keepAgenda.id}, deleted ${deleteAgendas.length} duplicates`);
-        }
-      }
-      
-      return mergedCount;
-    } catch (error) {
-      console.error("AGENDA: Error merging similar agendas:", error);
-      return 0;
-    }
   }
 };
 
