@@ -5,6 +5,7 @@ export const scheduler = pgTable('scheduler', {
   id: serial('id').primaryKey(),
   userId: integer('user_id').references(() => users.id).notNull(),
   scheduled: boolean('scheduled').default(false).notNull(),
+  isMorning: boolean('is_morning').default(true).notNull(),
   time: timestamp('time').notNull(),
   nextCallTime: timestamp('next_call_time').notNull(),
   createdAt: timestamp('created_at').defaultNow().notNull(),

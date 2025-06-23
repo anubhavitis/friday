@@ -123,7 +123,7 @@ export class OpenAITextService extends EventEmitter {
       if (!this.currentUserId) {
         throw new Error("User ID not set");
       }
-
+      console.log("OPENAI_TEXT: Initializing conversation for user:", this.currentUserId, "and isMorning:", isMorning);
       const initialContext = await (isMorning ? buildMorningInitialAIContext : buildEveningInitialAIContext)({
         currentDate: this.currentDate,
         persona: isMorning ? this.morningPersona : this.eveningPersona,

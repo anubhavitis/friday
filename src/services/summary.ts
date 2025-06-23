@@ -234,7 +234,7 @@ Do not include agenda items or specific plans. Return a single paragraph summary
     memoryService: MemoryService,
     currentUserId: number | null,
   ): Promise<void> {
-    console.log("SUMMARY: Updating memory with conversation history length:", conversationHistoryArray.length);
+    console.log("SUMMARY: Updating memory with conversation history length:", conversationHistoryArray.length, "and currentUserId:", currentUserId);
     
     // Skip if no conversation history
     if (conversationHistoryArray.length === 0) {
@@ -252,6 +252,23 @@ Do not include agenda items or specific plans. Return a single paragraph summary
       // Extract agenda items
       const agendaItems = await this.extractAgendaItems(formattedHistory, today);
       console.log("SUMMARY: Agenda items:", agendaItems);
+      if (agendaItems.length > 0 && currentUserId) {
+        const agendaItemsToAdd = agendaItems
+          .filter(item => item.name && item.date) // Filter out items with undefined required fields
+          .map(item => ({ 
+            userId: currentUserId,
+            name: item.name!,
+            date: item.date!,
+            status: item.status || 'planned',
+            details: item.details || '',
+            context: item.context || ''
+          }));
+        
+        if (agendaItemsToAdd.length > 0) {
+          await AgendaDbService.addAgendaItems(agendaItemsToAdd);
+          console.log("SUMMARY: Saved agenda items to database:", agendaItemsToAdd);
+        }
+      }
 
       // Extract categorized summaries instead of single interests summary
       const categorizedSummaries = await this.extractCategorizedSummaries(formattedHistory, today);
@@ -288,7 +305,7 @@ Do not include agenda items or specific plans. Return a single paragraph summary
     memoryService: MemoryService,
     currentUserId: number | null,
   ): Promise<void> {
-    console.log("SUMMARY: Updating memory with conversation history length:", conversationHistoryArray.length);
+    console.log("SUMMARY: Updating memory with conversation history length:", conversationHistoryArray.length, "and currentUserId:", currentUserId);
     
     // Skip if no conversation history
     if (conversationHistoryArray.length === 0) {

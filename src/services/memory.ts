@@ -17,7 +17,7 @@ export class MemoryService {
             throw new Error("MemoryService not initialized");
         }
         const options = optionsOverride || { user_id: this.user_id };
-        console.log("MEMORY: Adding messages:", messages);
+        console.log("MEMORY: Adding messages:", messages, "and options:", options);
         const result = await this.client.add(messages, options)
         return result;
     }

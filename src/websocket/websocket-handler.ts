@@ -7,6 +7,8 @@ import { SummaryService } from "../services/summary";
 import { TwilioVoiceService } from "../services/twilioVoice";
 import { UserService } from "../services/user";
 import { CallHistoryService } from "../services/callHistory";
+import CheckInDbService from "../repository/checkIn";
+import { CallStatus } from "../schema/checkIn";
 import { env } from "../config/env";
 
 export interface WebSocketData {
@@ -16,6 +18,9 @@ export interface WebSocketData {
   deepgramService: DeepgramService;
   callSidTwilio: string | null;
   streamSidTwilio: string | null;
+  currentUserId: number | null;
+  currentDate: string | null;
+  currentCallType: string | null;
 }
 
 export class WebSocketHandler {
@@ -57,6 +62,9 @@ export class WebSocketHandler {
       deepgramService,
       callSidTwilio: null,
       streamSidTwilio: null,
+      currentUserId: null,
+      currentDate: null,
+      currentCallType: null,
     } as WebSocketData;
 
     this.setupEventListeners(ws);
@@ -130,9 +138,24 @@ export class WebSocketHandler {
         let user = await this.userService.getUserByCallSid(callSid);
         data.memoryService?.init_user(user.id.toString());
         data.openAiTextService?.setUserId(user.id);
-        data.openAiTextService?.connect();
         data.callSidTwilio = callSid;
         data.streamSidTwilio = streamSid;
+        data.currentUserId = user.id;
+        data.currentDate = new Date().toISOString().split("T")[0]; // Format: "2025-06-19"
+        
+        // Get current call status
+        const callStatus = await CheckInDbService.getCurrentCallStatus(user.id, data.currentDate);
+        if (callStatus) {
+          data.currentCallType = callStatus.callType;
+          console.log(`APP: Current call type: ${callStatus.callType}, status: ${callStatus.status}`);
+          if (callStatus.callType === "morning") {
+            data.openAiTextService?.setIsMorning(true);
+          } else {
+            data.openAiTextService?.setIsMorning(false);
+          }
+        }
+        data.openAiTextService?.connect();
+        
         await this.callHistoryService.startCallHistory(callSid, user);
       }
     } catch (error) {
@@ -151,6 +174,21 @@ export class WebSocketHandler {
     if (!callSid) {
       console.warn('APP: No callSid found in close event');
       return;
+    }
+    
+    // Update checkIn data to completed if we have the necessary information
+    if (data.currentUserId && data.currentDate && data.currentCallType) {
+      try {
+        await CheckInDbService.updateCheckInData(
+          data.currentUserId,
+          data.currentDate,
+          data.currentCallType as any, // Cast to CallType
+          CallStatus.COMPLETED
+        );
+        console.log(`APP: Updated checkIn data to completed for user ${data.currentUserId} on ${data.currentDate}, call type: ${data.currentCallType}`);
+      } catch (error) {
+        console.error('APP: Error updating checkIn data:', error);
+      }
     }
     
     await this.callHistoryService.endCallHistory(callSid);
