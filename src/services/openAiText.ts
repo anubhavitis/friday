@@ -32,6 +32,7 @@ export class OpenAITextService extends EventEmitter {
   private conversationHistoryArray: ConversationHistory[] = [];
   private currentDate: string;
   private currentUserId: number | null = null;
+  private isMorning: boolean = true;
 
   constructor(private apiKey: string, memoryService: MemoryService, summaryService: SummaryService, userId?: number) {
     super();
@@ -55,6 +56,10 @@ export class OpenAITextService extends EventEmitter {
 
   public setUserId(userId: number): void {
     this.currentUserId = userId;
+  }
+
+  public setIsMorning(isMorning: boolean): void {
+    this.isMorning = isMorning;
   }
 
   private formatTextForTTS(text: string): string {
@@ -105,7 +110,7 @@ export class OpenAITextService extends EventEmitter {
 
   public async connect(): Promise<void> {
     try {
-      await this.initConversation();
+      await this.initConversation(this.isMorning);
       console.log("OPENAI_TEXT: Connected to OpenAI API");
     } catch (error) {
       console.error("OPENAI_TEXT: Error connecting to OpenAI:", error);
@@ -113,15 +118,15 @@ export class OpenAITextService extends EventEmitter {
     }
   }
 
-  private async initConversation(): Promise<void> {
+  private async initConversation(isMorning: boolean): Promise<void> {
     try {
       if (!this.currentUserId) {
         throw new Error("User ID not set");
       }
 
-      const initialContext = await buildEveningInitialAIContext({
+      const initialContext = await (isMorning ? buildMorningInitialAIContext : buildEveningInitialAIContext)({
         currentDate: this.currentDate,
-        persona: this.eveningPersona,
+        persona: isMorning ? this.morningPersona : this.eveningPersona,
         userId: this.currentUserId,
         memoryService: this.memoryService
       });
@@ -268,11 +273,19 @@ export class OpenAITextService extends EventEmitter {
   }
 
   private async updateMemory(): Promise<void> {
-    await this.summaryService.updateMemory(
-      this.conversationHistoryArray,
-      this.memoryService,
-      this.currentUserId
-    );
+    if (this.isMorning) {
+      await this.summaryService.updateMemoryForMorning(
+        this.conversationHistoryArray,
+        this.memoryService,
+        this.currentUserId
+      );
+    } else {
+      await this.summaryService.updateMemoryForEvening(
+        this.conversationHistoryArray,
+        this.memoryService,
+        this.currentUserId
+      );
+    }
   }
 
   public async disconnect(): Promise<void> {

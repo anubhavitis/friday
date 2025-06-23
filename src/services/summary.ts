@@ -229,10 +229,64 @@ Do not include agenda items or specific plans. Return a single paragraph summary
     return response.choices[0]?.message?.content?.trim() || "";
   }
 
-  public async updateMemory(
+  public async updateMemoryForMorning(
     conversationHistoryArray: ConversationHistory[],
     memoryService: MemoryService,
-    currentUserId: number | null
+    currentUserId: number | null,
+  ): Promise<void> {
+    console.log("SUMMARY: Updating memory with conversation history length:", conversationHistoryArray.length);
+    
+    // Skip if no conversation history
+    if (conversationHistoryArray.length === 0) {
+      return;
+    }
+    console.log("SUMMARY: Conversation history:", conversationHistoryArray);
+    try {
+      // Format conversation history for the prompt
+      const formattedHistory = conversationHistoryArray
+        .map((msg) => `${msg.speaker}: ${msg.content}`)
+        .join("\n");
+
+      const today = new Date().toISOString().split("T")[0]; // e.g., "2025-06-19"
+
+      // Extract agenda items
+      const agendaItems = await this.extractAgendaItems(formattedHistory, today);
+      console.log("SUMMARY: Agenda items:", agendaItems);
+
+      // Extract categorized summaries instead of single interests summary
+      const categorizedSummaries = await this.extractCategorizedSummaries(formattedHistory, today);
+      console.log("SUMMARY: Categorized summaries:", categorizedSummaries);
+
+      // Save categorized summaries with metadata
+      if (categorizedSummaries.length > 0) {
+        console.log("SUMMARY: Saving categorized summaries to memory...");
+        
+        for (const summary of categorizedSummaries) {
+          try {
+            await memoryService.add([{
+              role: "user",
+              content: summary.content,
+            }], { 
+              user_id: currentUserId?.toString() || "unknown",
+              metadata: { category: summary.category } 
+            });
+            console.log(`SUMMARY: Saved ${summary.category} summary:`, summary.content);
+          } catch (error) {
+            console.error(`SUMMARY: Error saving ${summary.category} summary:`, error);
+          }
+        }
+      }
+
+      console.log("SUMMARY: Memory updated successfully");
+    } catch (error) {
+      console.error("SUMMARY: Error updating memory:", error);
+    }
+  }
+
+  public async updateMemoryForEvening(
+    conversationHistoryArray: ConversationHistory[],
+    memoryService: MemoryService,
+    currentUserId: number | null,
   ): Promise<void> {
     console.log("SUMMARY: Updating memory with conversation history length:", conversationHistoryArray.length);
     
@@ -279,14 +333,30 @@ Do not include agenda items or specific plans. Return a single paragraph summary
         }
       }
 
-      // Extract agenda items
-      const agendaItems = await this.extractAgendaItems(formattedHistory, today);
-      console.log("SUMMARY: Agenda items:", agendaItems);
+      console.log("SUMMARY: Memory updated successfully");
+    } catch (error) {
+      console.error("SUMMARY: Error updating memory:", error);
+    }
+  }
+
+  public async updateMemoryForUser(
+    conversationHistoryArray: ConversationHistory[],
+    memoryService: MemoryService,
+    currentUserId: number | null,
+  ): Promise<void> {
+    console.log("SUMMARY: Updating memory with conversation history length:", conversationHistoryArray.length);
+    try {
+      // Format conversation history for the prompt
+      const formattedHistory = conversationHistoryArray
+        .map((msg) => `${msg.speaker}: ${msg.content}`)
+        .join("\n");
+
+      const today = new Date().toISOString().split("T")[0]; // e.g., "2025-06-19"
 
       // Extract categorized summaries instead of single interests summary
       const categorizedSummaries = await this.extractCategorizedSummaries(formattedHistory, today);
       console.log("SUMMARY: Categorized summaries:", categorizedSummaries);
-
+      
       // Save categorized summaries with metadata
       if (categorizedSummaries.length > 0) {
         console.log("SUMMARY: Saving categorized summaries to memory...");
@@ -306,38 +376,13 @@ Do not include agenda items or specific plans. Return a single paragraph summary
           }
         }
       }
-
-      // Save agenda items using AgendaService
-      if (agendaItems.length > 0 && currentUserId) {
-        console.log("SUMMARY: Saving agenda items to database:", agendaItems);
-        const agendaItemsWithUserId = agendaItems
-          .filter(item => item.name && item.date) // Ensure required fields exist
-          .map(item => ({
-            userId: currentUserId,
-            name: item.name!,
-            date: item.date!,
-            status: item.status || 'planned',
-            details: item.details || null,
-            context: item.context || null
-          }));
-        
-        try {
-          const savedAgendas = await AgendaDbService.addAgendaItems(agendaItemsWithUserId);
-          console.log("SUMMARY: Successfully saved agenda items:", savedAgendas);
-          
-          // Save summary to memory
-        //   const agendaNames = agendaItems.map(item => item.name).join(', ');
-        //   const summary = `User is planning to: ${agendaNames} on ${today}`;
-        //   await memoryService.saveAgendaSummary(summary);
-        //   console.log("SUMMARY: Saved agenda summary to memory:", summary);
-        } catch (error) {
-          console.error("SUMMARY: Error saving agenda items to database:", error);
-        }
-      } else {
-        console.log("SUMMARY: No agenda items to save or no user ID");
-      }
-
-      console.log("SUMMARY: Memory updated successfully");
+      const interestsSummary = await this.extractInterestsSummary(formattedHistory, today);
+      console.log("SUMMARY: Interests summary:", interestsSummary);
+      await memoryService.add([{
+        role: "user",
+        content: interestsSummary,
+      }]);
+      console.log("SUMMARY: Saved interests summary:", interestsSummary);
     } catch (error) {
       console.error("SUMMARY: Error updating memory:", error);
     }

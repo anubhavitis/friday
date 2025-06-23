@@ -143,14 +143,15 @@ async function getUserInterestsInfo(memoryService: MemoryService): Promise<strin
 }
 
 async function getTodayAgendas(userId: number, currentDate: string) {
-  return await AgendaDbService.getTodayAgendas(userId, currentDate);
+  return await AgendaDbService.getAgendasByDate(userId, currentDate);
 }
 
 async function getPreviousAgendas(userId: number, currentDate: string) {
   const previousDate = new Date(currentDate);
   previousDate.setDate(previousDate.getDate() - 1);
   const previousDateString = previousDate.toISOString().split('T')[0];
-  return await AgendaDbService.getTodayAgendas(userId, previousDateString);
+  console.log("AGENDA: Previous date:", previousDateString);
+  return await AgendaDbService.getAgendasByDate(userId, previousDateString);
 }
 
 function buildMorningAgendaContext(previousAgendas: any[], currentDate: string): string {

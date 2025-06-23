@@ -18,8 +18,8 @@ export class MemoryService {
         }
         const options = optionsOverride || { user_id: this.user_id };
         console.log("MEMORY: Adding messages:", messages);
-        // const result = await this.client.add(messages, options)
-        // return result;
+        const result = await this.client.add(messages, options)
+        return result;
     }
     
     public async greetings() {
