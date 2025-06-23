@@ -1,6 +1,7 @@
 import { gte, lte } from "drizzle-orm";
 import { scheduler } from "../../schema/scheduler";
 import SchedulerDbService from "../../repository/scheduler";
+import CheckInDbService from "../../repository/checkIn";
 import { Twilio } from "twilio";
 import UserDbService from "../../repository/users";
 
@@ -31,6 +32,7 @@ export class SchedulerCronService {
       // Get current time in HH:mm format
       const now = new Date();
       const fiveMinutesAgo = new Date(now.getTime() - 5 * 60 * 1000);
+      const currentDate = now.toISOString().split("T")[0]; // Format: "2025-06-19"
 
       console.log("checking for events between", fiveMinutesAgo, "and", now);
 
@@ -43,6 +45,14 @@ export class SchedulerCronService {
       console.log("recentEvents length:", recentEvents.length);
 
       recentEvents.forEach(async (event) => {
+        // Create checkIn data for this user and date
+        try {
+          await CheckInDbService.addCheckInData(event.userId, currentDate, event.isMorning);
+          console.log(`Created checkIn data for user ${event.userId} on ${currentDate}, isMorning: ${event.isMorning}`);
+        } catch (error) {
+          console.error(`Error creating checkIn data for user ${event.userId}:`, error);
+        }
+
         await this.makeCall(event.userId);
         await SchedulerDbService.updateScheduleNextCallTime(event);
       });

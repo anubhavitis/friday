@@ -6,13 +6,14 @@ const SchedulerDbService = {
   createSchedule: async function (
     schedule: Partial<Scheduler>
   ): Promise<Scheduler> {
-    const { userId, time, scheduled, nextCallTime } = schedule;
+    const { userId, time, scheduled, nextCallTime, isMorning } = schedule;
     const [result] = await db
       .insert(scheduler)
       .values({
         userId: userId as number,
         time: time as Date,
         scheduled: scheduled as boolean,
+        isMorning: isMorning as boolean,
         nextCallTime: nextCallTime as Date,
       })
       .returning();

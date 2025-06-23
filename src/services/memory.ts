@@ -17,6 +17,7 @@ export class MemoryService {
             throw new Error("MemoryService not initialized");
         }
         const options = optionsOverride || { user_id: this.user_id };
+        console.log("MEMORY: Adding messages:", messages, "and options:", options);
         const result = await this.client.add(messages, options)
         return result;
     }
@@ -35,11 +36,28 @@ export class MemoryService {
         if (!this.user_id) {
             throw new Error("MemoryService not initialized");
         }
-        const options = { user_id: this.user_id };
+        const options = { user_id: this.user_id, top_k: 50 };
         const result = await this.client.search(query, options);
         return result;
     }
 
+    public async searchWithCategory(query: string, categories: string[]) {
+        if (!this.user_id) {
+            throw new Error("MemoryService not initialized");
+        }
+        const options = { user_id: this.user_id, categories: categories };
+        const result = await this.client.search(query, options);
+        return result;
+    }
+
+    public async searchWithMetadata(query: string, metadata: any) {
+        if (!this.user_id) {
+            throw new Error("MemoryService not initialized");
+        }
+        const options = { user_id: this.user_id, metadata: metadata };
+        const result = await this.client.search(query, options);
+        return result;
+    }
     /**
      * Save a simple summary of agenda activities
      * @param summary The summary to save

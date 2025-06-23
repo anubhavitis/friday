@@ -8,13 +8,15 @@ export const CreateScheduleSchema = z.object({
     user_id: z.number().positive("User ID must be a positive number"),
     time: z.string()
         .regex(/^([01]?[0-9]|2[0-3]):[0-5][0-9]$/, "Time must be in 24-hour format (HH:mm)"),
-    scheduled: z.boolean()
+    scheduled: z.boolean(),
+    is_morning: z.boolean().default(true)
 });
 
 export interface ICreateSchedule {
     user_id: number;
     time: string;
     scheduled: boolean;
+    is_morning?: boolean;
 }
 
 
@@ -38,6 +40,7 @@ export const SchedulerService = {
                 userId: schedule.user_id,
                 time: time,
                 scheduled: schedule.scheduled,
+                isMorning: schedule.is_morning ?? true,
                 nextCallTime: nextCallTime,
             };
             

@@ -7,12 +7,13 @@ import {
 export class SchedulerHandler {
   static async POST(req: Request) {
     const body = await req.json();
-    const { user_id, time, scheduled } = body as ICreateSchedule;
+    const { user_id, time, scheduled, is_morning } = body as ICreateSchedule;
 
     const validationResult = CreateScheduleSchema.safeParse({
       user_id,
       time,
       scheduled,
+      is_morning,
     });
     if (!validationResult.success) {
       return new Response(
@@ -30,6 +31,7 @@ export class SchedulerHandler {
         user_id,
         time,
         scheduled,
+        is_morning,
       });
       return new Response(JSON.stringify(schedule), { status: 201 });
     } catch (error) {
