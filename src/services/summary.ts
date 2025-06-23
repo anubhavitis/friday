@@ -189,15 +189,13 @@ IMPORTANT:
     }
   }
 
-  private async extractInterestsSummary(formattedHistory: string, today: string): Promise<string> {
+  private async extractUserSummary(formattedHistory: string, today: string): Promise<string> {
     const response = await this.client.chat.completions.create({
       model: this.MODEL,
       messages: [
         {
           role: "system",
-          content: `Today is ${today}. Summarize any new or recurring interests expressed in this conversation. 
-Focus on what the user is excited about, exploring, or doing regularly. 
-Do not include agenda items or specific plans. Return a single paragraph summary without any markdown formatting.`,
+          content: `Find out about the user's personal details, interests and hobbies, and return a single paragraph summary without any markdown formatting.`,
         },
         {
           role: "user",
@@ -398,6 +396,17 @@ Do not include agenda items or specific plans. Return a single paragraph summary
           return acc;
         }, {} as Record<string, string[]>);
         
+        const userSummary = await this.extractUserSummary(formattedHistory, today);
+        console.log("SUMMARY: User summary:", userSummary);
+        await memoryService.add([{
+          role: "user",
+          content: userSummary,
+        }], { 
+          user_id: currentUserId?.toString() || "unknown",
+          metadata: { category: "personal_details" } 
+        });
+        console.log("SUMMARY: Saved user summary:", userSummary);
+        
         // Save each grouped category as a single memory entry
         for (const [category, contents] of Object.entries(groupedSummaries)) {
           try {
@@ -415,13 +424,6 @@ Do not include agenda items or specific plans. Return a single paragraph summary
           }
         }
       }
-      const interestsSummary = await this.extractInterestsSummary(formattedHistory, today);
-      console.log("SUMMARY: Interests summary:", interestsSummary);
-      await memoryService.add([{
-        role: "user",
-        content: interestsSummary,
-      }]);
-      console.log("SUMMARY: Saved interests summary:", interestsSummary);
     } catch (error) {
       console.error("SUMMARY: Error updating memory:", error);
     }
