@@ -39,7 +39,7 @@ export class UsersHandler {
         { speaker: "user" as const, content: userDetails }
       ];
       
-      await summaryService.updateMemory(conversationHistory, memoryService, user.id);
+      await summaryService.updateMemoryForUser(conversationHistory, memoryService, user.id);
       console.log('User details categorized and added to memory');
       
       return new Response(

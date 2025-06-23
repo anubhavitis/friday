@@ -274,22 +274,33 @@ Do not include agenda items or specific plans. Return a single paragraph summary
       const categorizedSummaries = await this.extractCategorizedSummaries(formattedHistory, today);
       console.log("SUMMARY: Categorized summaries:", categorizedSummaries);
 
-      // Save categorized summaries with metadata
+      // Group categorized summaries by category and combine them
       if (categorizedSummaries.length > 0) {
-        console.log("SUMMARY: Saving categorized summaries to memory...");
+        console.log("SUMMARY: Grouping and saving categorized summaries to memory...");
         
-        for (const summary of categorizedSummaries) {
+        // Group summaries by category
+        const groupedSummaries = categorizedSummaries.reduce((acc, summary) => {
+          if (!acc[summary.category]) {
+            acc[summary.category] = [];
+          }
+          acc[summary.category].push(summary.content);
+          return acc;
+        }, {} as Record<string, string[]>);
+        
+        // Save each grouped category as a single memory entry
+        for (const [category, contents] of Object.entries(groupedSummaries)) {
           try {
+            const combinedContent = contents.join(", ");
             await memoryService.add([{
               role: "user",
-              content: summary.content,
+              content: combinedContent,
             }], { 
               user_id: currentUserId?.toString() || "unknown",
-              metadata: { category: summary.category } 
+              metadata: { category: category } 
             });
-            console.log(`SUMMARY: Saved ${summary.category} summary:`, summary.content);
+            console.log(`SUMMARY: Saved ${category} summary:`, combinedContent);
           } catch (error) {
-            console.error(`SUMMARY: Error saving ${summary.category} summary:`, error);
+            console.error(`SUMMARY: Error saving ${category} summary:`, error);
           }
         }
       }
@@ -374,22 +385,33 @@ Do not include agenda items or specific plans. Return a single paragraph summary
       const categorizedSummaries = await this.extractCategorizedSummaries(formattedHistory, today);
       console.log("SUMMARY: Categorized summaries:", categorizedSummaries);
       
-      // Save categorized summaries with metadata
+      // Group categorized summaries by category and combine them
       if (categorizedSummaries.length > 0) {
-        console.log("SUMMARY: Saving categorized summaries to memory...");
+        console.log("SUMMARY: Grouping and saving categorized summaries to memory...");
         
-        for (const summary of categorizedSummaries) {
+        // Group summaries by category
+        const groupedSummaries = categorizedSummaries.reduce((acc, summary) => {
+          if (!acc[summary.category]) {
+            acc[summary.category] = [];
+          }
+          acc[summary.category].push(summary.content);
+          return acc;
+        }, {} as Record<string, string[]>);
+        
+        // Save each grouped category as a single memory entry
+        for (const [category, contents] of Object.entries(groupedSummaries)) {
           try {
+            const combinedContent = contents.join(", ");
             await memoryService.add([{
               role: "user",
-              content: summary.content,
+              content: combinedContent,
             }], { 
               user_id: currentUserId?.toString() || "unknown",
-              metadata: { category: summary.category } 
+              metadata: { category: category } 
             });
-            console.log(`SUMMARY: Saved ${summary.category} summary:`, summary.content);
+            console.log(`SUMMARY: Saved ${category} summary:`, combinedContent);
           } catch (error) {
-            console.error(`SUMMARY: Error saving ${summary.category} summary:`, error);
+            console.error(`SUMMARY: Error saving ${category} summary:`, error);
           }
         }
       }

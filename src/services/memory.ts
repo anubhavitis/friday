@@ -36,7 +36,7 @@ export class MemoryService {
         if (!this.user_id) {
             throw new Error("MemoryService not initialized");
         }
-        const options = { user_id: this.user_id };
+        const options = { user_id: this.user_id, top_k: 50 };
         const result = await this.client.search(query, options);
         return result;
     }

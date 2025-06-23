@@ -17,22 +17,24 @@ export async function buildMorningInitialAIContext({
 }: AIContextData): Promise<string> {
   // Fetch all the data
   const userInfo = await getUserInfo(memoryService);
-  const userPersonalInfo = await getUserPersonalInfo(memoryService);
-  const userWorkInfo = await getUserWorkInfo(memoryService);
-  const userHobbiesInfo = await getUserHobbiesInfo(memoryService);
-  const userInterestsInfo = await getUserInterestsInfo(memoryService);
+  console.log("userInfo", userInfo, "and length", userInfo.length);
+  const userPersonalInfo = await getUserPersonalInfo(userInfo);
+  const userWorkInfo = await getUserWorkInfo(userInfo);
+  const userHobbiesInfo = await getUserHobbiesInfo(userInfo);
+  const userInterestsInfo = await getUserInterestsInfo(userInfo);
+  const userAgendasSummary = await getUserAgendasSummary(userInfo);
   const todayAgendas = await getTodayAgendas(userId, currentDate);
   const previousAgendas = await getPreviousAgendas(userId, currentDate);
 
-  console.log("userInfo", userInfo);
   console.log("userPersonalInfo", userPersonalInfo);
   console.log("userWorkInfo", userWorkInfo);
   console.log("userHobbiesInfo", userHobbiesInfo);
   console.log("userInterestsInfo", userInterestsInfo);
+  console.log("userAgendasSummary", userAgendasSummary);
   // Build agenda context
   const agendaContext = buildMorningAgendaContext(previousAgendas, currentDate);
   
-  return `Today is ${currentDate}. You are ${persona}. Here is what I know about the user: ${JSON.stringify(userPersonalInfo)}, work information: ${JSON.stringify(userWorkInfo)}, hobbies: ${JSON.stringify(userHobbiesInfo)}, and interests: ${JSON.stringify(userInterestsInfo)}, and some other information: ${JSON.stringify(userInfo)}, and check for their interests and get to know them better, about the things they are doing. 
+  return `Today is ${currentDate}. You are ${persona}. Here is what I know about the user: ${JSON.stringify(userPersonalInfo)}, work information: ${JSON.stringify(userWorkInfo)}, hobbies: ${JSON.stringify(userHobbiesInfo)}, interests: ${JSON.stringify(userInterestsInfo)}, and some previous agendas: ${JSON.stringify(userAgendasSummary)}, and check for their interests and get to know them better, about the things they are doing. 
 Use this information to greet them naturally with their name, and just simply ask how was your day. Once you get to know about the users day ask about their planned activities suggest something based on their interests.
 You need to take into account the users interests and preferences.
 IMPORTANT: ${agendaContext}
@@ -53,14 +55,14 @@ export async function buildEveningInitialAIContext({
 }: AIContextData): Promise<string> {
   // Fetch all the data
   const userInfo = await getUserInfo(memoryService);
-  const userPersonalInfo = await getUserPersonalInfo(memoryService);
-  const userWorkInfo = await getUserWorkInfo(memoryService);
-  const userHobbiesInfo = await getUserHobbiesInfo(memoryService);
-  const userInterestsInfo = await getUserInterestsInfo(memoryService);
+  console.log("userInfo", userInfo, "and length", userInfo.length);
+  const userPersonalInfo = await getUserPersonalInfo(userInfo);
+  const userWorkInfo = await getUserWorkInfo(userInfo);
+  const userHobbiesInfo = await getUserHobbiesInfo(userInfo);
+  const userInterestsInfo = await getUserInterestsInfo(userInfo);
   const todayAgendas = await getTodayAgendas(userId, currentDate);
   const previousAgendas = await getPreviousAgendas(userId, currentDate);
 
-  console.log("userInfo", userInfo);
   console.log("userPersonalInfo", userPersonalInfo);
   console.log("userWorkInfo", userWorkInfo);
   console.log("userHobbiesInfo", userHobbiesInfo);
@@ -68,7 +70,7 @@ export async function buildEveningInitialAIContext({
   // Build agenda context
   const agendaContext = buildEveningAgendaContext(todayAgendas, currentDate);
   
-  return `Today is ${currentDate}. You are ${persona}. Here is what I know about the user: ${JSON.stringify(userPersonalInfo)}, work information: ${JSON.stringify(userWorkInfo)}, hobbies: ${JSON.stringify(userHobbiesInfo)}, and interests: ${JSON.stringify(userInterestsInfo)}, and some other information: ${JSON.stringify(userInfo)}, and check for their interests and get to know them better, about the things they are doing. 
+  return `Today is ${currentDate}. You are ${persona}. Here is what I know about the user: ${JSON.stringify(userPersonalInfo)}, work information: ${JSON.stringify(userWorkInfo)}, hobbies: ${JSON.stringify(userHobbiesInfo)}, and interests: ${JSON.stringify(userInterestsInfo)}, and check for their interests and get to know them better, about the things they are doing. 
 Use this information to greet them naturally with their name, and just simply ask how was your day. You will be given the agendas for today, ask user about how the agendas went one by one.
 You need to take into account the users interests and preferences.
 IMPORTANT: ${agendaContext}
@@ -81,64 +83,80 @@ IMPORTANT: Break your responses into natural chunks. Send one sentence or questi
 }
 
 
-async function getUserInfo(memoryService: MemoryService): Promise<string> {
+async function getUserInfo(memoryService: MemoryService): Promise<Array<Memory>> {
   const query = "give every information related to this user";
   const memories = await memoryService.search(query);
   
   if (memories.length === 0) {
-    return "No specific user information available.";
+    return [];
   }
-  
-  // Extract memory content and combine into a paragraph
-  const memoryContents = memories.map(memory => memory.memory).join(". ");
-  return memoryContents;
+  return memories;
 }
 
-async function getUserPersonalInfo(memoryService: MemoryService): Promise<string> {
-  const query = "give every information related to this user personal details";
-  const memories = await memoryService.searchWithCategory(query, ["personal_details"]);
+async function getUserPersonalInfo(userInfo: Array<Memory>): Promise<string> {
+  // Filter userInfo to get only personal_details from metadata
+  const personalDetailsMemories = userInfo.filter(memory => 
+    memory.metadata?.category === "personal_details"
+  );
   
-  if (memories.length === 0) {
+  if (personalDetailsMemories.length === 0) {
     return "No specific personal details available.";
   }
   
-  const memoryContents = memories.map(memory => memory.memory).join(". ");
+  const memoryContents = personalDetailsMemories.map(memory => memory.memory).join(". ");
   return memoryContents;
 }
 
-async function getUserWorkInfo(memoryService: MemoryService): Promise<string> {
-  const query = "give every information related to this user work projects career";
-  const memories = await memoryService.searchWithMetadata(query, { category: "work" });
+async function getUserWorkInfo(userInfo: Array<Memory>): Promise<string> {
+  // Filter userInfo to get only work from metadata
+  const workMemories = userInfo.filter(memory => 
+    memory.metadata?.category === "work"
+  );
   
-  if (memories.length === 0) {
+  if (workMemories.length === 0) {
     return "No specific work information available.";
   }
   
-  const memoryContents = memories.map(memory => memory.memory).join(". ");
+  const memoryContents = workMemories.map(memory => memory.memory).join(". ");
   return memoryContents;
 }
 
-async function getUserHobbiesInfo(memoryService: MemoryService): Promise<string> {
-  const query = "give every information related to this user hobbies activities sports";
-  const memories = await memoryService.searchWithMetadata(query, { category: "hobbies" });
+async function getUserHobbiesInfo(userInfo: Array<Memory>): Promise<string> {
+  // Filter userInfo to get only hobbies from metadata
+  const hobbiesMemories = userInfo.filter(memory => 
+    memory.metadata?.category === "hobbies"
+  );
   
-  if (memories.length === 0) {
+  if (hobbiesMemories.length === 0) {
     return "No specific hobbies information available.";
   }
   
-  const memoryContents = memories.map(memory => memory.memory).join(". ");
+  const memoryContents = hobbiesMemories.map(memory => memory.memory).join(". ");
   return memoryContents;
 }
 
-async function getUserInterestsInfo(memoryService: MemoryService): Promise<string> {
-  const query = "give every information related to this user interests learning exploring";
-  const memories = await memoryService.searchWithMetadata(query, { category: "interests" });
+async function getUserInterestsInfo(userInfo: Array<Memory>): Promise<string> {
+  // Filter userInfo to get only interests from metadata
+  const interestsMemories = userInfo.filter(memory => 
+    memory.metadata?.category === "interests"
+  );
   
-  if (memories.length === 0) {
+  if (interestsMemories.length === 0) {
     return "No specific interests information available.";
   }
   
-  const memoryContents = memories.map(memory => memory.memory).join(". ");
+  const memoryContents = interestsMemories.map(memory => memory.memory).join(". ");
+  return memoryContents;
+}
+
+  async function getUserAgendasSummary(userInfo: Array<Memory>): Promise<string> {
+  const agendas = userInfo.filter(memory => 
+    memory.metadata?.category === "agenda_summary"
+  );
+  if (agendas.length === 0) {
+    return "No specific agendas information available.";
+  }
+  const memoryContents = agendas.map(memory => memory.memory).join(". ");
   return memoryContents;
 }
 
