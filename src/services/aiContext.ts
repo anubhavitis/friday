@@ -177,7 +177,8 @@ function buildMorningAgendaContext(previousAgendas: any[], currentDate: string):
     const agendaList = previousAgendas.map(agenda => 
       `- ${agenda.name} (${agenda.status})`
     ).join('\n');
-    return `These are the agendas from the previous day: ${agendaList}, when you ask about the user agendas for the day, ask about the agenda user might be interested in from the previous day.`;
+    return `These are the agendas from the previous day: ${agendaList}, when you ask about the user agendas for the day, ask about the agenda user might be interested in based on the agendas from the previous day.
+    Ask about the agendas that are not completed, mention they missed it yesterday and ask if they want to do it today.`;
   } else {
     return "No specific agendas planned for yesterday. Suggest some activities based on the user's interests.";
   }

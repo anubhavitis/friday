@@ -73,7 +73,7 @@ export class ChatWebSocketHandler {
         
         // Set user ID and connect OpenAI service
         data.openAiService?.setUserId(user_id);
-        data.openAiService?.setIsMorning(false);
+        data.openAiService?.setIsMorning(true);
         data.userId = user_id;
         
         data.openAiService?.connect();

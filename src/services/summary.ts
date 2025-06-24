@@ -333,17 +333,17 @@ IMPORTANT:
       if (currentUserId) {
         console.log("SUMMARY: Analyzing conversation for agenda completion...");
           
-        const completedAgendaIds = await AgendaDbService.analyzeConversationForCompletion(
+        const completionResult = await AgendaDbService.analyzeConversationForCompletion(
           currentUserId,
           formattedHistory,
           today,
           this.apiKey
         );
         
-        if (completedAgendaIds.length > 0) {
+        if (completionResult.completed.length > 0) {
           // Save completion summary to memory
           const completedAgendas = await Promise.all(
-            completedAgendaIds.map(id => AgendaDbService.getAgendaById(id))
+            completionResult.completed.map(id => AgendaDbService.getAgendaById(id))
           );
           
           const agendaNames = completedAgendas
